@@ -7,8 +7,8 @@ const prisma = new PrismaClient({});
 async function main() {
     const newUser = await prisma.user.create({
         data: {
-            email: "jose.perez@talentmatch.ai",
-            password: "CanadaMasterPlan2026",
+            email: "admin@admin",
+            password: "12345",
         },
     });
     console.log("✅ SUCCESS: User integrated into Aiven:", newUser);
