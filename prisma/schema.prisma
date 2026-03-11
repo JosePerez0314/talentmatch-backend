@@ -7,8 +7,24 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model user {
+model User {
   id       Int    @id @default(autoincrement())
   email    String @unique
   password String
+  profile Profile?
+}
+
+model Profile {
+  id Int @id @default(autoincrement())
+  role String
+  yearsOfExperience Int
+  technicalSkills String
+  optionalTechnicalSkills String
+  softSkills String
+  description String
+  education String
+  languages String
+
+  userId Int @unique
+  user User @relation(fields: [userId], references: [id])
 }
