@@ -1,36 +1,50 @@
 import { PrismaClient } from "@prisma/client";
 
-// Initialize with an empty object to satisfy the "non-empty" requirement 
-// or leave empty if using standard generation.
-const prisma = new PrismaClient({});
+const prisma = new PrismaClient();
 
 async function main() {
-    // 🚀 THE NESTED WRITE: Creating both entities at the exact same time
-    const newUserWithProfile = await prisma.user.create({
+    // 🚀 THE NESTED WRITE: Creating the User and Candidate entities simultaneously
+    const newUserWithCandidate = await prisma.user.create({
         data: {
-            email: "bryam@talentmatch.ai",
-            password: "securepassword123", // We will hash this later
-            profile: {
+            email: "bryam@talent.ai",
+            password: "12345",
+
+            candidate: {
                 create: {
-                    role: "Senior Backend Architect",
-                    yearsOfExperience: 5,
-                    technicalSkills: "Node.js, Express, MySQL, Prisma",
-                    optionalTechnicalSkills: "AWS, Docker, Linux",
-                    softSkills: "Leadership, Communication, Project Management",
-                    description: "Highly disciplined backend engineer specializing in scalable SaaS architectures.",
+                    fullName: "Bryam Smith",
+                    role: "Frontend Developer",
+                    email: "bryam.candidate@talentmatch.ai", // Must be unique
+                    fileUrl: "https://aws-s3-bucket.com/resumes/bryam_resume.pdf",
+                    technicalSkills: "React, Tailwind CSS, JavaScript",
+                    softSkills: "Teamwork, Problem Solving, UI/UX Design",
+                    personalProject: true,
+                    phoneNumber: "+1-809-555-0199",
                     education: "B.S. Systems Engineering",
-                    languages: "Spanish (Native), English (B2)"
+                    languages: "Spanish (Native), English (B1)"
+                }
+            },
+
+            jobRequirement: {
+                create: {
+                    role: "Senior React Developer",
+                    yearsOfExperience: 3,
+                    technicalSkills: "React, Node.js, TypeScript",
+                    optionalTechnicalSkills: "Docker, AWS",
+                    softSkills: "Communication, Leadership",
+                    description: "Looking for a frontend expert to lead our new dashboard project.",
+                    education: "Bachelor's Degree",
+                    languages: "English, Spanish"
                 }
             }
         },
-        // This tells Prisma to return the profile data in the console log
+        // Tell Prisma to return the nested candidate data in the console log
         include: {
-            profile: true,
+            candidate: true,
         }
     });
 
-    console.log("✅ SUCCESS: User and Profile integrated into Aiven:");
-    console.dir(newUserWithProfile, { depth: null });
+    console.log("✅ SUCCESS: User and Candidate integrated into Aiven:");
+    console.dir(newUserWithCandidate, { depth: null });
 }
 
 main()

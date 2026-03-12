@@ -11,10 +11,16 @@ model User {
   id       Int    @id @default(autoincrement())
   email    String @unique
   password String
-  profile Profile?
+
+  // Applying the relationship with JobRequirement and Candidate models
+  jobRequirement JobRequirement?
+  candidate Candidate?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
-model Profile {
+model JobRequirement {
   id Int @id @default(autoincrement())
   role String
   yearsOfExperience Int
@@ -25,6 +31,34 @@ model Profile {
   education String
   languages String
 
-  userId Int @unique
+  // Relationship between both tables
+  userId Int @unique 
   user User @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Candidate {
+  id Int @id @default(autoincrement())
+
+  // Data that the user should see
+  fullName String
+  role String
+  email String @unique
+  fileUrl String @unique
+
+  // Advance result
+  technicalSkills   String 
+  softSkills        String
+  personalProject   Boolean
+  phoneNumber       String  
+  education         String
+  languages         String 
+
+  userId Int @unique 
+  user User @relation(fields: [userId], references: [id]) // Relationship between the both tables
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
