@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
@@ -18,7 +18,7 @@ async function main() {
                     technicalSkills: "React, Tailwind CSS, JavaScript",
                     softSkills: "Teamwork, Problem Solving, UI/UX Design",
                     personalProject: true,
-                    phoneNumber: "+1-809-555-0199",
+                    phoneNumber: "+1-809-555-0199", // Must be string
                     education: "B.S. Systems Engineering",
                     languages: "Spanish (Native), English (B1)"
                 }
@@ -40,11 +40,12 @@ async function main() {
         // Tell Prisma to return the nested candidate data in the console log
         include: {
             candidate: true,
+            jobRequirement: true,
         }
     });
 
     console.log("✅ SUCCESS: User and Candidate integrated into Aiven:");
-    console.dir(newUserWithCandidate, { depth: null });
+    console.dir(newUserWithCandidate, { depth: null }); // Forcing the terminal to show me everything
 }
 
 main()
