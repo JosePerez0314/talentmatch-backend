@@ -3,6 +3,47 @@ import prisma from "../lib/prisma.js";
 
 const router = express.Router();
 
+// Giving the JSON to Front End
+router.get("/", async (req, res) => {
+    try {
+        // Selecting all the object
+        const allCandidates = await prisma.user.findMany({
+            include: {
+                candidate: true,
+            }
+        });
+
+        return res.status(200).json(allCandidates);
+    } catch (error) {
+        console.error("Database error", error)
+        return res.status(500).json({ error: "Failed to fetch candidates" });
+    }
+});
+
+router.get("/:id", async (req, res) => {
+    try {
+        const idSearch = parseInt(req.params.id);
+        const allcandidate = await prisma.user.findMany({
+            include: {
+                candidate: true
+            }
+        });
+
+        if (isNaN(idSearch)) {
+            res.status(400).json({ error: "We just accept number values" });
+            return;
+        }
+
+        const idCandidates = allcandidate.find(c => c.id === idSearch)
+        return idCandidates ? res.json((idCandidates)) : res.status(404).json({ error: "Candidate not found" });
+    } catch (error) {
+        console.error("Database error", error);
+        return res.status(500).json({ error: "Failed to fetch ID candidate" });
+    }
+});
+
+// Sending the JSON to the Database
+
 router.post('/evaluate', async (req, res) => {
     const payload = req.body; // JSON container aplied in index.js
 
@@ -54,7 +95,7 @@ router.post('/evaluate', async (req, res) => {
 
     } catch (error) {
         console.error("Database error", error);
-        return res.status(500).json({ error: "Internal server error during database operation" })
+        return res.status(500).json({ error: "Internal server error during database operation" });
     }
 });
 
