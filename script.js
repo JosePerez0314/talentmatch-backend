@@ -1,9 +1,10 @@
+// Testing the prisma Database
+
 import { Prisma } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
 async function main() {
-    // 🚀 THE NESTED WRITE: Creating the User and Candidate entities simultaneously
     const newUserWithCandidate = await prisma.user.create({
         data: {
             email: "bryam@talent.ai",

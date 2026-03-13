@@ -1,8 +1,9 @@
 import express from "express";
+import prisma from "../lib/prisma.js";
 
 const router = express.Router();
 
-router.post('/evaluar', (req, res) => {
+router.post('/evaluate', async (req, res) => {
     const payload = req.body;
 
     if (!payload) {
@@ -10,8 +11,22 @@ router.post('/evaluar', (req, res) => {
         return;
     }
 
-    console.log("Payload received", payload);
-    payload && res.status(201).json({ mensaje: 'Data receive successfully' });
+    try {
+        const newUser = await prisma.user.create({
+            data: {
+                email: "payload.email",
+                password: "12345",
+            },
+        });
+
+        console.log("Database write succesful:", newUser.email);
+
+        return res.status(201).json({ message: 'Data receive successfully' });
+
+    } catch (error) {
+        console.error("Database error", error);
+        return res.status(500).json({ error: "Internal server error during database operation" })
+    }
 });
 
 export default router;
