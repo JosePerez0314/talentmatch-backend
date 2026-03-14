@@ -13,8 +13,8 @@ model User {
   password String
 
   // Applying the relationship with JobRequirement and Candidate models
-  jobRequirement JobRequirement?
-  candidate Candidate?
+  jobRequirement JobRequirement[]
+  candidate Candidate[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -32,7 +32,7 @@ model JobRequirement {
   languages String
 
   // Relationship between both tables
-  userId Int @unique 
+  userId Int 
   user User @relation(fields: [userId], references: [id])
 
   createdAt DateTime @default(now())
@@ -47,16 +47,10 @@ model Candidate {
   role String
   email String @unique
   fileUrl String @unique
+  match Int
+  aiAnalist Json
 
-  // Advance result
-  technicalSkills   String 
-  softSkills        String
-  personalProject   Boolean
-  phoneNumber       String  
-  education         String
-  languages         String 
-
-  userId Int @unique 
+  userId Int @unique
   user User @relation(fields: [userId], references: [id]) // Relationship between the both tables
 
   createdAt DateTime @default(now())

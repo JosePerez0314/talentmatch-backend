@@ -5,9 +5,10 @@
 This is where the data lives permanently in MySQL (via Aiven).
 
 - **User:** id, email, password (hashed).
-- **JobRequirement:** Linked to User. Contains the Recruiter's inputs: role, yearsOfExperience, technicalSkills, softSkills, education, languages.
-- **Candidate:** Linked to User. Contains fullName, email, phoneNumber, fileUrl.
-  - _CRITICAL UPDATE NEEDED:_ We must add `matchScore (Int)` and `aiAnalysis (Json)` columns to this table to store the AI's results.
+- **JobRequirement:** Linked to User. Contains the Recruiter's inputs: role, yearsOfExperience, technicalSkills, optionalTechnicalSkills, softSkills, description, education, languages.
+- **Candidate:** Linked to User and JobRequirement. Contains the profile data extracted from the CV:
+  Identity: fullName, email, phoneNumber, fileUrl.
+  AI Results: match (Int) — stores the ranking score; aiAnalist (Json) — stores the detailed skill analysis, missing requirements, and education details.
 
 ## 2. THE 5-STAGE DATA FLOW (The Backend Logic)
 
@@ -31,9 +32,11 @@ We send the AI the exact job rules, plus the unstructured resume text.
 "role": "Systems Engineer / Fullstack Developer",
 "yearsOfExperience": 2,
 "technicalSkills": "React, Node.js, Express, MySQL",
+"optionalTechnicalSkills": "Prisma"
 "softSkills": "Leadership, Problem Solving",
+"Description": "Description about the role",
 "education": "University Degree",
-"languages": "English, Spanish"
+"languages": "English, Spanish",
 },
 "candidateResumeText": "RAW_EXTRACTED_STRING_FROM_PDF_PARSE_GOES_HERE"
 }
@@ -53,8 +56,8 @@ The AI does the heavy lifting. It parses the text, calculates the match, and ret
 "mandatorySkillsMissing": ["SQL"],
 "optionalSkillsFound": ["Docker", "Git"],
 "optionalSkillsMissing": ["AWS"],
-"educationFound": ["Estudiante de Ingeniería de Software"],
-"languagesFound": ["Inglés Técnico"],
-"softSkillsFound": ["Liderazgo", "Resolución de problemas"]
+"educationFound": ["Software Engineering Student"],
+"languagesFound": ["Technical English"],
+"softSkillsFound": ["Leadership", "Problem Solving"]
 }
 }
