@@ -70,23 +70,9 @@ router.post('/evaluate', async (req, res) => {
                         languages: payload.languages
                     }
                 },
-
-                candidate: {
-                    create: {
-                        fullName: payload.fullName,
-                        role: payload.role,
-                        email: payload.email, // Must be unique
-                        fileUrl: payload.fileUrl,
-                        technicalSkills: payload.technicalSkills,
-                        softSkills: payload.softSkills,
-                        personalProject: payload.personalProject,
-                        phoneNumber: payload.phoneNumber, // Must be string
-                        education: payload.education,
-                        languages: payload.languages
-                    }
-                }
             },
 
+            include: { jobRequirement: true }
         });
 
         console.log("Database write succesful:", newUser.email);

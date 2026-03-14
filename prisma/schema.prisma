@@ -50,7 +50,7 @@ model Candidate {
   match Int
   aiAnalist Json
 
-  userId Int @unique
+  userId Int
   user User @relation(fields: [userId], references: [id]) // Relationship between the both tables
 
   createdAt DateTime @default(now())
