@@ -9,6 +9,7 @@ router.get("/", async (req, res) => {
         // Selecting all the object
         const allCandidates = await prisma.user.findMany({
             include: {
+                jobRequirement: true,
                 candidate: true,
             }
         });
@@ -25,6 +26,7 @@ router.get("/:id", async (req, res) => {
         const idSearch = parseInt(req.params.id);
         const allcandidate = await prisma.user.findMany({
             include: {
+                jobRequirement: true,
                 candidate: true
             }
         });
