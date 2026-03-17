@@ -9,8 +9,6 @@ app.use(express.json());
 
 app.use("/api/candidates/", candidates);
 
-
-
 app.listen(port, () => {
     console.log(`The server is running in http://localhost:${port}/api/candidates`);
 });

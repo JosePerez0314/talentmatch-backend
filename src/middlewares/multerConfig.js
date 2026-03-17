@@ -6,6 +6,7 @@ import cloudinary from './cloudinaryConfig.js'
 const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
     params: {
+        resource_type: 'raw',
         allowed_formats: ['pdf'],
     },
 });
