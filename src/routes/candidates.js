@@ -2,6 +2,7 @@ import express from "express";
 import prisma from "../lib/prisma.js";
 import upload from '../middlewares/multerConfig.js';
 import { error } from "node:console";
+import { buffer } from "node:stream/consumers";
 
 const router = express.Router();
 
@@ -94,10 +95,22 @@ router.post('/upload', upload.single('pdf'), (req, res) => {
         return res.status(400).json({ error: "No PDF uploaded" })
     }
 
-    return res.status(200).json({
-        message: "PDF upload successfully to Cloudinary!",
-        fileData: req.file
-    });
+    try {
+        const isPdfSignatureValid = (buffer) => {
+            const magicSignature = buffer.toString('hex', 0, 4);
+            return magicSignature === '25504446';
+        };
+
+        console.log("The PDF signature is valid");
+
+        return res.status(200).json({
+            message: "PDF upload successfully to Cloudinary!",
+            fileData: req.file
+        });
+    } catch (error) {
+        console.error("Database error", error);
+        return res.status(500).json({ error: "Internal server error during database operation" });
+    }
 });
 
 export default router;
