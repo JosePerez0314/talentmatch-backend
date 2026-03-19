@@ -12,15 +12,15 @@ model User {
   email    String @unique
   password String
 
-  // Applying the relationship with JobRequirement and Candidate models
-  jobRequirement JobRequirement[]
-  candidate Candidate[]
+  // Applying the relationship with Position and Candidate models
+  position Position[]
+  candidates Candidate[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-model JobRequirement {
+model Position {
   id Int @id @default(autoincrement())
   role String
   yearsOfExperience Int
@@ -37,6 +37,9 @@ model JobRequirement {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  vacancies Vacancy[]
+  candidates Candidate[]
 }
 
 model Candidate {
@@ -44,15 +47,58 @@ model Candidate {
 
   // Data that the user should see
   fullName String
-  role String
   email String @unique
   fileUrl String @unique
-  match Int
-  aiAnalist Json
+
+  // Data to compare
+  role String
+  yearsOfExperience Int
+  technicalSkills String
+  optionalTechnicalSkills String
+  softSkills String
+  description String
+  education String
+  languages String
+
+  aiAnalysis Json // Ai Analysis to complete the columns
 
   userId Int
   user User @relation(fields: [userId], references: [id]) // Relationship between the both tables
 
+  positionId Int
+  position Position @relation(fields: [positionId], references: [id])
+
+  matchResults MatchResult[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Vacancy {
+  id Int @id @default(autoincrement())
+  title String
+  openDate DateTime
+  closeDate DateTime
+
+  positionId Int
+  position Position @relation(fields: [positionId], references: [id])
+
+  matchResults MatchResult[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MatchResult {
+  id Int @id @default(autoincrement())
+  matchScore Int
+
+  candidateId Int
+  candidate   Candidate @relation(fields: [candidateId], references: [id])
+
+  vacancyId   Int
+  vacancy     Vacancy @relation(fields: [vacancyId], references: [id])
+
+  @@unique([candidateId, vacancyId])
+  createdAt DateTime @default(now())
 }
