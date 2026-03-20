@@ -15,7 +15,8 @@
   "devDependencies": {
     "@types/node": "^25.4.0",
     "nodemon": "^3.1.14",
-    "prisma": "^6.19.2"
+    "prisma": "^6.19.2",
+    "prisma-docs-generator": "^0.8.0"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
