@@ -85,5 +85,15 @@ router.post('/position', async (req, res) => {
     }
 });
 
+router.post('/upload', upload.single('pdf'), (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ error: "No PDF uploaded" })
+    }
+
+    return res.status(200).json({
+        message: "PDF upload successfully to Cloudinary!",
+        fileData: req.file
+    });
+});
 
 export default router;
