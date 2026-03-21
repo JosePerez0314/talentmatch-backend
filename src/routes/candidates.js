@@ -6,6 +6,22 @@ const router = express.Router();
 
 // Sending the JSON to the Database
 
+router.get('/', async (req, res) => {
+    try {
+        const allUsers = await prisma.user.findMany({
+            include: {
+                positions: true,
+                candidates: true
+            }
+        })
+
+        return res.status(200).json({ allUsers });
+    } catch (error) {
+        console.error("Database error", error);
+        return res.status(500).json({ error: "Failed to fetch Users" });
+    }
+})
+
 router.post('/user', async (req, res) => {
     const payload = req.body;
 
@@ -68,5 +84,6 @@ router.post('/position', async (req, res) => {
         return res.status(500).json({ error: "Internal server error during database operation" });
     }
 });
+
 
 export default router;
