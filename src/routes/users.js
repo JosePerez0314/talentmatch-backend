@@ -1,5 +1,6 @@
 import express from "express";
 import prisma from "../lib/prisma.js";
+import bcrypt from "bcrypt"
 
 const router = express.Router();
 
@@ -25,15 +26,20 @@ router.post('/', async (req, res) => {
     const payload = req.body;
 
     try {
-        if (!payload) {
+        if (!payload || !payload.password) {
             res.status(400).json({ error: "Error to receive the data" });
             return
         }
 
+        const userTypedPassword = payload.password;
+        const costFactor = 10;
+        const safeHashedString = await bcrypt.hash(userTypedPassword, costFactor);
+
+
         const newUser = await prisma.user.create({
             data: {
                 email: payload.email,
-                password: payload.password
+                password: safeHashedString
             }
         });
 
