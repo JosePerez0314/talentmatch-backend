@@ -11,7 +11,7 @@ router.get('/', async (req, res) => {
         const allUsers = await prisma.user.findMany({
             include: {
                 positions: true,
-                candidates: true
+                candidates: true,
             }
         })
 
@@ -43,6 +43,8 @@ router.post('/', async (req, res) => {
             }
         });
 
+
+
         console.log("Database write succesful:", newUser);
 
         return res.status(201).json({
@@ -53,6 +55,49 @@ router.post('/', async (req, res) => {
     } catch (error) {
         console.error("Database error", error);
         return res.status(500).json({ error: "Internal server error during database operation" });
+    }
+});
+
+router.post('/login', async (req, res) => {
+    const { email, password } = req.body;
+
+    try {
+        const user = await prisma.user.findUnique({
+            where: { email },
+            select: {
+                id: true,
+                email: true,
+                password: true
+            }
+        });
+
+        if (!user) {
+            return res.status(401).json({
+                status: "failed",
+                data: [],
+                message: "Invalid email or password"
+            })
+        }
+
+        const isPasswordValid = await bcrypt.compare(
+            password,
+            user.password
+        )
+
+        const { password: _, ...user_data } = user;
+
+        return res.status(200).json({
+            status: "success",
+            data: [user_data],
+            message: "You have successfully logged in."
+        })
+
+    } catch (error) {
+        return res.status(500).json({
+            status: "error",
+            data: [],
+            message: "Internal Server Error"
+        });
     }
 });
 
