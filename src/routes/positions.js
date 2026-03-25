@@ -60,4 +60,36 @@ router.post('/', async (req, res) => {
     }
 });
 
+router.get('/:id', async (req, res) => {
+    try {
+        const idSearch = parseInt(req.params.id);
+
+        if (isNaN(idSearch)) {
+            return res.status(400).json({ error: "Position just accept number values" });
+        }
+
+        const position = await prisma.position.findUnique({
+            where: { id: idSearch },
+            select: {
+                select: {
+                    id: true,
+                    role: true,
+                    yearsOfExperience: true,
+                    technicalSkills: true,
+                    optionalTechnicalSkills: true,
+                    softSkills: true,
+                    description: true,
+                    education: true,
+                    createdAt: true
+                }
+            }
+        });
+
+        return position ? res.status(200).json(position) : res.status(404).json({ error: "Position not found" });
+
+    } catch (error) {
+
+    }
+});
+
 export default router;
