@@ -3,6 +3,30 @@ import prisma from "../lib/prisma.js";
 
 const router = express.Router();
 
+router.get('/', async (req, res) => {
+    try {
+        const allPositions = await prisma.position.findMany({
+            select: {
+                id: true,
+                role: true,
+                yearsOfExperience: true,
+                technicalSkills: true,
+                optionalTechnicalSkills: true,
+                softSkills: true,
+                description: true,
+                education: true,
+                createdAt: true
+            }
+        });
+
+        return res.status(200).json({ allPositions });
+    } catch (error) {
+        return res.status(500).json({
+            error: "Failed to fetch Positions"
+        })
+    }
+});
+
 router.post('/', async (req, res) => {
     const payload = req.body; // JSON container aplied in index.js
 

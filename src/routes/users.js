@@ -9,9 +9,10 @@ const router = express.Router();
 router.get('/', async (req, res) => {
     try {
         const allUsers = await prisma.user.findMany({
-            include: {
-                positions: true,
-                candidates: true,
+            select: {
+                id: true,
+                email: true,
+                createdAt: true
             }
         })
 
