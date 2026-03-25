@@ -84,6 +84,14 @@ router.post('/login', async (req, res) => {
             user.password
         )
 
+        if (!isPasswordValid) {
+            return res.status(401).json({
+                status: "failed",
+                data: [],
+                message: "Invalid email or password"
+            })
+        }
+
         const { password: _, ...user_data } = user;
 
         return res.status(200).json({
