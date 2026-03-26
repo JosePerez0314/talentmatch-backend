@@ -71,17 +71,15 @@ router.get('/:id', async (req, res) => {
         const position = await prisma.position.findUnique({
             where: { id: idSearch },
             select: {
-                select: {
-                    id: true,
-                    role: true,
-                    yearsOfExperience: true,
-                    technicalSkills: true,
-                    optionalTechnicalSkills: true,
-                    softSkills: true,
-                    description: true,
-                    education: true,
-                    createdAt: true
-                }
+                id: true,
+                role: true,
+                yearsOfExperience: true,
+                technicalSkills: true,
+                optionalTechnicalSkills: true,
+                softSkills: true,
+                description: true,
+                education: true,
+                createdAt: true
             }
         });
 
