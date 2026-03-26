@@ -1,5 +1,6 @@
 import express from "express";
 import prisma from "../lib/prisma.js";
+import { error } from "console";
 
 const router = express.Router();
 
@@ -61,13 +62,10 @@ router.post('/', async (req, res) => {
 });
 
 router.get('/:id', async (req, res) => {
+    const idSearch = parseInt(req.params.id);
+    if (isNaN(idSearch)) return res.status(400).json({ error: "Position IDs only accept numeric values" });
+
     try {
-        const idSearch = parseInt(req.params.id);
-
-        if (isNaN(idSearch)) {
-            return res.status(400).json({ error: "Position just accept number values" });
-        }
-
         const position = await prisma.position.findUnique({
             where: { id: idSearch },
             select: {
@@ -86,7 +84,36 @@ router.get('/:id', async (req, res) => {
         return position ? res.status(200).json(position) : res.status(404).json({ error: "Position not found" });
 
     } catch (error) {
+        console.error("Database error", error);
+        return res.status(500).json({ error: "Internal server error during database operation" });
+    }
+});
 
+router.put('/:id', async (req, res) => {
+    const payload = req.body;
+    const idSearch = parseInt(req.params.id);
+    if (isNaN(idSearch)) return res.status(400).json({ error: "Position IDs only accept numeric values" });
+
+    try {
+        const position = await prisma.position.update({
+            where: { id: idSearch },
+            data: {
+                role: payload.role,
+                yearsOfExperience: payload.yearsOfExperience,
+                technicalSkills: payload.technicalSkills,
+                optionalTechnicalSkills: payload.optionalTechnicalSkills,
+                softSkills: payload.softSkills,
+                description: payload.description,
+                education: payload.education,
+                languages: payload.languages,
+            }
+        });
+
+        return position ? res.status(200).json(position) : res.status(404).json({ error: "Position not found" });
+
+    } catch (error) {
+        console.error("Database error", error);
+        return res.status(500).json({ error: "Internal server error during database operation" });
     }
 });
 
