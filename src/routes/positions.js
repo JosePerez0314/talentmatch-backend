@@ -1,6 +1,5 @@
 import express from "express";
 import prisma from "../lib/prisma.js";
-import { error } from "console";
 
 const router = express.Router();
 
@@ -31,7 +30,7 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
     const payload = req.body; // JSON container aplied in index.js
 
-    if (!payload) {
+    if (Object.keys(payload).length === 0) {
         res.status(400).json({ error: "Error to receive the data" });
         return;
     }
@@ -110,6 +109,23 @@ router.put('/:id', async (req, res) => {
         });
 
         return position ? res.status(200).json(position) : res.status(404).json({ error: "Position not found" });
+
+    } catch (error) {
+        console.error("Database error", error);
+        return res.status(500).json({ error: "Internal server error during database operation" });
+    }
+});
+
+router.delete('/:id', async (req, res) => {
+    const idSearch = parseInt(req.params.id);
+    if (isNaN(idSearch)) return res.status(400).json({ error: "Position IDs only accept numeric values" });
+
+    try {
+        const position = await prisma.position.delete({
+            where: { id: idSearch }
+        });
+
+        return res.status(200).json({ message: "Position successfully deleted." });
 
     } catch (error) {
         console.error("Database error", error);
