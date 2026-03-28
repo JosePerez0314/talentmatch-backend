@@ -1,7 +1,5 @@
 import express from "express";
 import prisma from "../lib/prisma.js"
-import { error } from "console";
-import { parse } from "path";
 
 const router = express.Router();
 
@@ -71,11 +69,12 @@ router.put('/:id', async (req, res) => {
     if (isNaN(idSearch)) return res.status(400).json({ error: "Vacancies IDs only accept numeric values" });
 
     try {
-        const vacancy = prisma.vacancy.update({
+        const vacancy = await prisma.vacancy.update({
+            where: { id: idSearch },
             data: {
                 title: payload.title || undefined,
-                openDate: new Date(payload.openDate) ? new Date(payload.openDate) : undefined,
-                closeDate: new Date(payload.closeDate) ? new Date(payload.closeDate) : undefined,
+                openDate: payload.openDate ? new Date(payload.openDate) : undefined,
+                closeDate: payload.closeDate ? new Date(payload.closeDate) : undefined,
             }
         });
 
@@ -86,6 +85,22 @@ router.put('/:id', async (req, res) => {
     }
 });
 
-router.delete('/:id', async (req, res) => { });
+router.delete('/:id', async (req, res) => {
+    const idSearch = parseInt(req.params.id);
+    if (isNaN(idSearch)) return res.status(400).json({ error: "Vancancies IDs only accept numeric values" });
+
+    try {
+        const vacancy = await prisma.vacancy.delete({
+            where: { id: idSearch }
+        })
+
+        return res.status(200).json({ message: "Vacancy successfully deleted" });
+    } catch (error) {
+        if (error.code === 'P2025') return res.status(404).json({ error: "Vacancy not found or already deleted" });
+
+        console.error("Database error", error);
+        return res.status(500).json({ error: "Internal server error during database operation" });
+    }
+});
 
 export default router;
