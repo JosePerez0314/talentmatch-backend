@@ -5,6 +5,7 @@ import cloudinary from './cloudinaryConfig.js'
 const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
     params: {
+        folder: 'talentmatch_cvs',
         allowed_formats: ['pdf'],
     },
 });
