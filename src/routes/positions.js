@@ -3,7 +3,7 @@ import prisma from "../lib/prisma.js";
 
 const router = express.Router();
 
-router.get('/', async (req, res) => {
+router.get('/', async (req, res, next) => {
     try {
         const allPositions = await prisma.position.findMany({
             select: {
@@ -21,13 +21,11 @@ router.get('/', async (req, res) => {
 
         return res.status(200).json({ allPositions });
     } catch (error) {
-        return res.status(500).json({
-            error: "Failed to fetch Positions"
-        })
+        next(error);
     }
 });
 
-router.post('/', async (req, res) => {
+router.post('/', async (req, res, next) => {
     const payload = req.body; // JSON container aplied in index.js
 
     if (Object.keys(payload).length === 0) {
@@ -55,12 +53,11 @@ router.post('/', async (req, res) => {
         return res.status(201).json({ message: 'Data receive successfully' });
 
     } catch (error) {
-        console.error("Database error", error);
-        return res.status(500).json({ error: "Internal server error during database operation" });
+        next(error);
     }
 });
 
-router.get('/:id', async (req, res) => {
+router.get('/:id', async (req, res, next) => {
     const idSearch = parseInt(req.params.id);
     if (isNaN(idSearch)) return res.status(400).json({ error: "Position IDs only accept numeric values" });
 
@@ -83,12 +80,11 @@ router.get('/:id', async (req, res) => {
         return position ? res.status(200).json(position) : res.status(404).json({ error: "Position not found" });
 
     } catch (error) {
-        console.error("Database error", error);
-        return res.status(500).json({ error: "Internal server error during database operation" });
+        next(error);
     }
 });
 
-router.put('/:id', async (req, res) => {
+router.put('/:id', async (req, res, next) => {
     const payload = req.body;
     const idSearch = parseInt(req.params.id);
     if (isNaN(idSearch)) return res.status(400).json({ error: "Position IDs only accept numeric values" });
@@ -111,12 +107,11 @@ router.put('/:id', async (req, res) => {
         return position ? res.status(200).json(position) : res.status(404).json({ error: "Position not found" });
 
     } catch (error) {
-        console.error("Database error", error);
-        return res.status(500).json({ error: "Internal server error during database operation" });
+        next(error);
     }
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', async (req, res, next) => {
     const idSearch = parseInt(req.params.id);
     if (isNaN(idSearch)) return res.status(400).json({ error: "Position IDs only accept numeric values" });
 
@@ -128,8 +123,7 @@ router.delete('/:id', async (req, res) => {
         return res.status(200).json({ message: "Position successfully deleted." });
 
     } catch (error) {
-        console.error("Database error", error);
-        return res.status(500).json({ error: "Internal server error during database operation" });
+        next(error);
     }
 });
 
