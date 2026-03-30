@@ -49,13 +49,13 @@ model Position {
   yearsOfExperience Int
   
   /// Required hard skills for the role (e.g., "Node.js, Express, MySQL, Prisma").
-  technicalSkills String
+  technicalSkills Json
   
   /// "Nice-to-have" skills that boost a candidate's match score but are not mandatory.
-  optionalTechnicalSkills String
+  optionalTechnicalSkills Json
   
   /// Required interpersonal skills (e.g., "Leadership, Clear Communication").
-  softSkills String
+  softSkills Json
   
   /// A detailed summary of the day-to-day responsibilities and expectations.
   description String
@@ -64,7 +64,7 @@ model Position {
   education String
   
   /// Spoken languages required for the role (e.g., "English (B2), Spanish (Native)").
-  languages String
+  languages Json
 
   /// Foreign key linking this position to the HR Admin who created it.
   userId Int 
@@ -105,13 +105,13 @@ model Candidate {
   yearsOfExperience Int
   
   /// Core technical skills extracted from the CV.
-  technicalSkills String
+  technicalSkills Json
   
   /// Additional or secondary technical skills found in the CV.
-  optionalTechnicalSkills String
+  optionalTechnicalSkills Json
   
   /// Interpersonal and communication skills identified by the AI.
-  softSkills String
+  softSkills Json
   
   /// A brief AI-generated summary of the candidate's professional profile.
   description String
@@ -120,7 +120,7 @@ model Candidate {
   education String
   
   /// Spoken languages identified in the CV.
-  languages String
+  languages Json
 
   /// The complete, raw JSON payload returned by the AI after parsing the CV.
   aiAnalysis Json 
