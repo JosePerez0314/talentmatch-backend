@@ -2,7 +2,6 @@ import express from "express";
 import prisma from "../lib/prisma.js"
 import { sendResponseOr404 } from "../lib/responseHandler.js";
 import { catchAsync } from "../lib/catchAsync.js";
-import { title } from "process";
 
 const router = express.Router();
 
