@@ -1,21 +1,39 @@
 import express from "express";
 import prisma from "../lib/prisma.js";
+import { sendResponseOr404 } from "../lib/responseHandler.js";
 
 const router = express.Router();
+
+const positionSelectObject = {
+    id: true,
+    role: true,
+    yearsOfExperience: true,
+    technicalSkills: true,
+    optionalTechnicalSkills: true,
+    softSkills: true,
+    description: true,
+    education: true,
+    createdAt: true
+};
+
+const buildPositionData = (payload) => {
+    return {
+        role: payload.role,
+        yearsOfExperience: payload.yearsOfExperience,
+        technicalSkills: payload.technicalSkills,
+        optionalTechnicalSkills: payload.optionalTechnicalSkills,
+        softSkills: payload.softSkills,
+        description: payload.description,
+        education: payload.education,
+        languages: payload.languages,
+    };
+}
 
 router.get('/', async (req, res, next) => {
     try {
         const allPositions = await prisma.position.findMany({
             select: {
-                id: true,
-                role: true,
-                yearsOfExperience: true,
-                technicalSkills: true,
-                optionalTechnicalSkills: true,
-                softSkills: true,
-                description: true,
-                education: true,
-                createdAt: true
+                ...positionSelectObject,
             }
         });
 
@@ -26,58 +44,50 @@ router.get('/', async (req, res, next) => {
 });
 
 router.post('/', async (req, res, next) => {
-    const payload = req.body; // JSON container aplied in index.js
+    const payload = req.body; // JSON container applied in index.js
 
-    if (Object.keys(payload).length === 0) {
-        res.status(400).json({ error: "Error to receive the data" });
-        return;
-    }
+    // Check if the payload exists and is not empty
+    if (!payload || Object.keys(payload).length === 0) return res.status(400).json({ error: "No data provided in the request body" });
+
+    // Validate the absolute minimum required fields for the Database
+    if (!payload.role || !payload.userId) return res.status(400).json({ success: false, error: "Missing required fields: 'role' and 'userId' are mandatory." });
 
     try {
         const newPosition = await prisma.position.create({
             data: {
-                role: payload.role,
-                yearsOfExperience: payload.yearsOfExperience,
-                technicalSkills: payload.technicalSkills,
-                optionalTechnicalSkills: payload.optionalTechnicalSkills,
-                softSkills: payload.softSkills,
-                description: payload.description,
-                education: payload.education,
-                languages: payload.languages,
+                ...buildPositionData(payload),
                 userId: payload.userId
             }
         });
 
-        console.log("Database write succesful:", newPosition.role);
+        console.log("Database write successful:", newPosition.role);
 
-        return res.status(201).json({ message: 'Data receive successfully' });
+        return res.status(201).json({ message: 'Data received successfully' });
 
     } catch (error) {
         next(error);
     }
 });
 
-router.get('/:id', async (req, res, next) => {
-    const idSearch = parseInt(req.params.id);
+router.param('id', (req, res, next, id) => {
+    const idSearch = parseInt(id);
+
     if (isNaN(idSearch)) return res.status(400).json({ error: "Position IDs only accept numeric values" });
 
+    req.idSearch = idSearch;
+    next();
+});
+
+router.get('/:id', async (req, res, next) => {
     try {
         const position = await prisma.position.findUnique({
-            where: { id: idSearch },
+            where: { id: req.idSearch },
             select: {
-                id: true,
-                role: true,
-                yearsOfExperience: true,
-                technicalSkills: true,
-                optionalTechnicalSkills: true,
-                softSkills: true,
-                description: true,
-                education: true,
-                createdAt: true
+                ...positionSelectObject
             }
         });
 
-        return position ? res.status(200).json(position) : res.status(404).json({ error: "Position not found" });
+        return sendResponseOr404(res, position, "Position");
 
     } catch (error) {
         next(error);
@@ -86,25 +96,14 @@ router.get('/:id', async (req, res, next) => {
 
 router.put('/:id', async (req, res, next) => {
     const payload = req.body;
-    const idSearch = parseInt(req.params.id);
-    if (isNaN(idSearch)) return res.status(400).json({ error: "Position IDs only accept numeric values" });
-
     try {
         const position = await prisma.position.update({
-            where: { id: idSearch },
+            where: { id: req.idSearch },
             data: {
-                role: payload.role,
-                yearsOfExperience: payload.yearsOfExperience,
-                technicalSkills: payload.technicalSkills,
-                optionalTechnicalSkills: payload.optionalTechnicalSkills,
-                softSkills: payload.softSkills,
-                description: payload.description,
-                education: payload.education,
-                languages: payload.languages,
+                ...buildPositionData(payload)
             }
         });
-
-        return position ? res.status(200).json(position) : res.status(404).json({ error: "Position not found" });
+        return sendResponseOr404(res, position, "Position");
 
     } catch (error) {
         next(error);
@@ -112,12 +111,9 @@ router.put('/:id', async (req, res, next) => {
 });
 
 router.delete('/:id', async (req, res, next) => {
-    const idSearch = parseInt(req.params.id);
-    if (isNaN(idSearch)) return res.status(400).json({ error: "Position IDs only accept numeric values" });
-
     try {
         const position = await prisma.position.delete({
-            where: { id: idSearch }
+            where: { id: req.idSearch }
         });
 
         return res.status(200).json({ message: "Position successfully deleted." });
