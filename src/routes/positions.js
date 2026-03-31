@@ -37,7 +37,7 @@ router.get('/', catchAsync(async (req, res, next) => {
         }
     });
 
-    return res.status(200).json({ allPositions });
+    return sendResponseOr404(res, allPositions, "Positions")
 }));
 
 router.post('/', catchAsync(async (req, res, next) => {
@@ -97,7 +97,7 @@ router.delete('/:id', catchAsync(async (req, res, next) => {
         where: { id: req.idSearch }
     });
 
-    return res.status(200).json({ message: "Position successfully deleted." });
+    return sendResponseOr404(res, position, "Position");
 }));
 
 export default router;
