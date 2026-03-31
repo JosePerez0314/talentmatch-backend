@@ -49,6 +49,17 @@ router.post('/', catchAsync(async (req, res, next) => {
     // Validate the absolute minimum required fields for the Database
     if (!payload.role || !payload.userId) return res.status(400).json({ success: false, error: "Missing required fields: 'role' and 'userId' are mandatory." });
 
+    const userExists = await prisma.user.findUnique({
+        where: { id: payload.userId }
+    })
+
+    if (!userExists) {
+        return res.status(404).json({
+            success: false,
+            message: `User with ${payload.userId} was not found. Cannot create position`
+        });
+    }
+
     const newPosition = await prisma.position.create({
         data: {
             ...buildPositionData(payload),
