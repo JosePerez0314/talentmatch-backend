@@ -1,12 +1,13 @@
 import express from "express";
 import prisma from "../lib/prisma.js";
 import bcrypt from "bcrypt"
+import { sendResponseOr404 } from "../lib/responseHandler.js"
 
 const router = express.Router();
 
 // Sending the JSON to the Database
 
-router.get('/', async (req, res) => {
+router.get('/', async (req, res, next) => {
     try {
         const allUsers = await prisma.user.findMany({
             select: {
@@ -16,14 +17,13 @@ router.get('/', async (req, res) => {
             }
         })
 
-        return res.status(200).json({ allUsers });
+        return sendResponseOr404(res, allUsers, "Users");
     } catch (error) {
-        console.error("Database error", error);
-        return res.status(500).json({ error: "Failed to fetch Users" });
+        next(error);
     }
 })
 
-router.post('/', async (req, res) => {
+router.post('/', async (req, res, next) => {
     const payload = req.body;
 
     try {
@@ -44,8 +44,6 @@ router.post('/', async (req, res) => {
             }
         });
 
-
-
         console.log("Database write succesful:", newUser);
 
         return res.status(201).json({
@@ -54,12 +52,11 @@ router.post('/', async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Database error", error);
-        return res.status(500).json({ error: "Internal server error during database operation" });
+        next(error);
     }
 });
 
-router.post('/login', async (req, res) => {
+router.post('/login', async (req, res, next) => {
     const { email, password } = req.body;
 
     try {
@@ -102,11 +99,7 @@ router.post('/login', async (req, res) => {
         })
 
     } catch (error) {
-        return res.status(500).json({
-            status: "error",
-            data: [],
-            message: "Internal Server Error"
-        });
+        next(error);
     }
 });
 
