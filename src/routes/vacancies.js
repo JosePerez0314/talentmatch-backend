@@ -1,106 +1,106 @@
 import express from "express";
 import prisma from "../lib/prisma.js"
+import { sendResponseOr404 } from "../lib/responseHandler.js";
+import { catchAsync } from "../lib/catchAsync.js";
+import { title } from "process";
 
 const router = express.Router();
 
-router.get('/', async (req, res) => {
-    try {
-        const allVacancies = await prisma.vacancy.findMany({
-            include: {
-                matchResults: true
-            }
-        });
-        return res.status(200).json({ allVacancies })
-    } catch (error) {
-        return res.status(500).json({
-            error: "Failed to fetch Vacancies"
-        })
-    }
-});
+const vacanciesSelectObject = {
+    id: true,
+    title: true,
+    openDate: true,
+    closeDate: true,
+    createdAt: true
+}
 
-router.post('/', async (req, res) => {
+const buildVacanciesData = (payload) => {
+    return {
+        title: payload.title,
+        openDate: new Date(payload.openDate),
+        closeDate: new Date(payload.closeDate)
+    }
+}
+
+router.get('/', catchAsync(async (req, res, next) => {
+    const allVacancies = await prisma.vacancy.findMany({
+        select: {
+            ...vacanciesSelectObject,
+            matchResults: true
+        }
+    });
+
+    return sendResponseOr404(res, allVacancies, "Vacancies");
+}));
+
+router.post('/', catchAsync(async (req, res, next) => {
     const payload = req.body;
-    if (Object.keys(payload).length === 0) {
-        return res.status(400).json({ error: "Error to receive the data" });
-    }
 
-    try {
-        const newVacancies = await prisma.vacancy.create({
-            data: {
-                title: payload.title,
-                openDate: new Date(payload.openDate),
-                closeDate: new Date(payload.closeDate),
-                positionId: payload.positionId
-            },
+    if (!payload || Object.keys(payload).length === 0) return res.status(400).json({ error: "No data provided in the request body" });
+    if (!payload.title || !payload.positionId || !payload.openDate || !payload.closeDate) return res.status(400).json({ success: false, error: "Missing required fields: 'tile', 'openDate', 'closeDate', 'positionId' are mandatory." });
 
-            include: {
-                matchResults: true
-            }
+    const positionExists = await prisma.position.findUnique({
+        where: { id: payload.positionId }
+    });
+
+    if (!positionExists) {
+        return res.status(404).json({
+            success: false,
+            message: `Position with ${payload.positionId} was not found. Cannot create vacancy`
         });
-
-        console.log("Database write sucessful:", newVacancies);
-        return res.status(200).json({ message: 'Data receive successfully' });
-    } catch (error) {
-        console.error("Database error", error);
-        return res.status(500).json({ error: "Internal server error during database operation" });
     }
-});
 
-router.get('/:id', async (req, res) => {
-    const idSearch = parseInt(req.params.id);
 
+    const newVacancies = await prisma.vacancy.create({
+        data: {
+            ...buildVacanciesData(payload),
+            positionId: payload.positionId
+        },
+
+        include: {
+            matchResults: true
+        }
+    });
+
+    console.log("Database write sucessful:", newVacancies);
+    return res.status(201).json({ message: 'Data received successfully' });
+}));
+
+router.param('id', catchAsync(async (req, res, next, id) => {
+    const idSearch = parseInt(id);
     if (isNaN(idSearch)) return res.status(400).json({ error: "Vancancies IDs only accept numeric values" });
 
-    try {
-        const vacancy = await prisma.vacancy.findUnique({
-            where: { id: idSearch }
-        })
+    req.idSearch = idSearch;
+    next();
+}));
 
-        return vacancy ? res.status(200).json(vacancy) : res.status(404).json({ error: "Vacancy not found" });
-    } catch (error) {
-        console.error("Database error", error);
-        return res.status(500).json({ error: "Internal server error during database operation" });
-    }
-});
+router.get('/:id', catchAsync(async (req, res, next) => {
+    const vacancy = await prisma.vacancy.findUnique({
+        where: { id: req.idSearch }
+    })
 
-router.put('/:id', async (req, res) => {
+    return sendResponseOr404(res, vacancy, "Vacancy");
+}));
+
+router.put('/:id', catchAsync(async (req, res, next) => {
     const payload = req.body;
-    const idSearch = parseInt(req.params.id);
-    if (isNaN(idSearch)) return res.status(400).json({ error: "Vacancies IDs only accept numeric values" });
 
-    try {
-        const vacancy = await prisma.vacancy.update({
-            where: { id: idSearch },
-            data: {
-                title: payload.title || undefined,
-                openDate: payload.openDate ? new Date(payload.openDate) : undefined,
-                closeDate: payload.closeDate ? new Date(payload.closeDate) : undefined,
-            }
-        });
+    const vacancy = await prisma.vacancy.update({
+        where: { id: req.idSearch },
+        data: {
+            ...buildVacanciesData(payload)
+        }
+    });
 
-        return vacancy ? res.status(200).json(vacancy) : res.status(404).json({ error: "Vacancy not Found" })
-    } catch (error) {
-        console.error("Database error", error);
-        return res.status(500).json({ error: "Internal server error during database operation" });
-    }
-});
+    return sendResponseOr404(res, vacancy, "Vacancy");
+}));
 
-router.delete('/:id', async (req, res) => {
-    const idSearch = parseInt(req.params.id);
-    if (isNaN(idSearch)) return res.status(400).json({ error: "Vancancies IDs only accept numeric values" });
+router.delete('/:id', catchAsync(async (req, res, next) => {
+    const vacancy = await prisma.vacancy.delete({
+        where: { id: req.idSearch }
+    })
 
-    try {
-        const vacancy = await prisma.vacancy.delete({
-            where: { id: idSearch }
-        })
-
-        return res.status(200).json({ message: "Vacancy successfully deleted" });
-    } catch (error) {
-        if (error.code === 'P2025') return res.status(404).json({ error: "Vacancy not found or already deleted" });
-
-        console.error("Database error", error);
-        return res.status(500).json({ error: "Internal server error during database operation" });
-    }
-});
+    return sendResponseOr404(res, vacancy, "Vacancy");
+}));
 
 export default router;

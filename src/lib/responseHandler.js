@@ -1,7 +1,7 @@
 export const sendResponseOr404 = (res, data, entityName = "Record") => {
     if (!data) {
         return res.status(404).json({
-            succes: "false",
+            success: "false",
             error: `${entityName} not found`
         });
     }
