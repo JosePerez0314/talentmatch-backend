@@ -27,7 +27,8 @@
     "express": "^5.2.1",
     "multer": "^2.1.1",
     "multer-storage-cloudinary": "^4.0.0",
-    "openai": "^6.32.0"
+    "openai": "^6.32.0",
+    "pdf-parse": "^2.4.5"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
