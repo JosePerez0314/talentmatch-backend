@@ -65,13 +65,13 @@ router.post('/', catchAsync(async (req, res, next) => {
     return res.status(201).json({ message: 'Data received successfully' });
 }));
 
-router.param('id', catchAsync(async (req, res, next, id) => {
+router.param('id', (req, res, next, id) => {
     const idSearch = parseInt(id);
     if (isNaN(idSearch)) return res.status(400).json({ error: "Vancancies IDs only accept numeric values" });
 
     req.idSearch = idSearch;
     next();
-}));
+});
 
 router.get('/:id', catchAsync(async (req, res, next) => {
     const vacancy = await prisma.vacancy.findUnique({
