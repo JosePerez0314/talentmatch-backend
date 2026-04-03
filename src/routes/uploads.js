@@ -19,7 +19,8 @@ router.post('/', upload.array('pdfs', 100), catchAsync(async (req, res) => {
         // [TODO 2]: Send that text to OpenAI (Prompt 1) to get the JSON match
         // [TODO 3]: Save the JSON to your Prisma database (Candidate & MatchResult)
 
-        // processedCandidates.push(databaseResult);
+        // processedCandidates.push(databaseResult); 
+
     }
 
     return res.status(201).json({
