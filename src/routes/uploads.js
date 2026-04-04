@@ -2,6 +2,12 @@ import express from "express";
 import upload from '../middlewares/multerConfig.js';
 import { catchAsync } from "../lib/catchAsync.js";
 
+// Import parse with CommonJS
+
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
+const pdf = require("pdf-parse");
+
 const router = express.Router();
 
 router.post('/', upload.array('pdfs', 100), catchAsync(async (req, res) => {
@@ -13,14 +19,27 @@ router.post('/', upload.array('pdfs', 100), catchAsync(async (req, res) => {
     const processedCandidates = [];
 
     for (const pdfFile of pdfFiles) {
-        console.log(`Processsing file: ${pdfFile}`);
+        console.log(`Processing file: ${pdfFile}`);
 
-        // [TODO 1]: Pipe the file buffer into pdf-parse to get raw text
-        // [TODO 2]: Send that text to OpenAI (Prompt 1) to get the JSON match
-        // [TODO 3]: Save the JSON to your Prisma database (Candidate & MatchResult)
+        try {
+            // pass the memory buffer to pdf-parse
+            const data = await pdf(pdfFile.buffer);
+            const extractedText = data.text;
 
-        // processedCandidates.push(databaseResult); 
+            if (extractedText.trim().length < 150) {
+                throw new Error("Insufficient text. The PDF might be a scanned image (OCR required).");
+            }
 
+            console.log(`\n--- Extracted Text from ${pdfFile.originalname} ---`)
+            console.log(extractedText.substring(0, 300));
+
+            // [TODO 2]: Send that text to OpenAI (Prompt 1) to get the JSON match
+            // [TODO 3]: Save the JSON to your Prisma database (Candidate & MatchResult)
+
+            // processedCandidates.push(databaseResult); 
+        } catch (error) {
+            console.error(`Failed to parse PDF: ${pdfFile.originalname}`, error.message);
+        }
     }
 
     return res.status(201).json({
