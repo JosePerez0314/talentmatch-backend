@@ -1,12 +1,9 @@
 import express from "express";
 import upload from '../middlewares/multerConfig.js';
 import { catchAsync } from "../lib/catchAsync.js";
+import { extractCandidateData } from "../services/openaiService.js"
 
-// Import parse with CommonJS
-
-import { createRequire } from "module";
-const require = createRequire(import.meta.url);
-const pdf = require("pdf-parse");
+import pdfWrapper from "../lib/pdfWrapper.cjs";
 
 const router = express.Router();
 
@@ -19,32 +16,37 @@ router.post('/', upload.array('pdfs', 100), catchAsync(async (req, res) => {
     const processedCandidates = [];
 
     for (const pdfFile of pdfFiles) {
-        console.log(`Processing file: ${pdfFile}`);
+        console.log(`Processing file: ${pdfFile.originalname}`);
 
         try {
             // pass the memory buffer to pdf-parse
-            const data = await pdf(pdfFile.buffer);
+            const data = await pdfWrapper.extract(pdfFile.buffer);
             const extractedText = data.text;
 
-            if (extractedText.trim().length < 150) {
+            if (extractedText.trim().length < 500) {
                 throw new Error("Insufficient text. The PDF might be a scanned image (OCR required).");
             }
 
-            console.log(`\n--- Extracted Text from ${pdfFile.originalname} ---`)
-            console.log(extractedText.substring(0, 300));
+            console.log(`Sending ${pdfFile.originalname} to OpenAI for extraction...`);
 
-            // [TODO 2]: Send that text to OpenAI (Prompt 1) to get the JSON match
+            const aiCandidateJson = await extractCandidateData(extractedText);
+
+            console.log(`\n--- Extracted Text from ${pdfFile.originalname} ---`)
+            console.log(JSON.stringify(aiCandidateJson, null, 2));
+
+            processedCandidates.push(aiCandidateJson);
+
+
             // [TODO 3]: Save the JSON to your Prisma database (Candidate & MatchResult)
 
-            // processedCandidates.push(databaseResult); 
         } catch (error) {
             console.error(`Failed to parse PDF: ${pdfFile.originalname}`, error.message);
         }
     }
 
     return res.status(201).json({
-        message: "PDF upload successfully to Cloudinary!",
-        fileData: pdfFiles
+        message: "CV extraction complete!",
+        fileData: processedCandidates
     });
 }));
 
