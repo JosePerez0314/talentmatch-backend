@@ -92,8 +92,8 @@ model Candidate {
   /// The full name of the candidate, extracted by the AI.
   fullName String
   
-  /// The contact email of the candidate. Must be unique in the system.
-  email String @unique
+  /// The contact email of the candidate.
+  email String
   
   /// The cloud hosting URL (e.g., Cloudinary) where the original PDF is stored.
   fileUrl String @unique
@@ -122,8 +122,8 @@ model Candidate {
   /// Spoken languages identified in the CV.
   languages Json
 
-  /// The complete, raw JSON payload returned by the AI after parsing the CV.
-  aiAnalysis Json 
+/// The complete, raw JSON payload returned by the AI for backup and auditing.
+  rawApiPayload Json
 
   /// Foreign key linking this candidate to the HR Admin who uploaded the CV.
   userId Int
