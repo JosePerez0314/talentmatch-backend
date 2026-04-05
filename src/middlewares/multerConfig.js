@@ -7,7 +7,7 @@ const upload = multer({
 
     //Limit file size to 5MB
     limits: { fileSize: 5 * 1024 * 1024 },
-    fileFilter: (req, file, cb) => {
+    fileFilter: (req, file, cb) => { // cb parament is for specify if an error exits and accept the file by a boolean value
         if (file.mimetype === 'application/pdf') {
             cb(null, true);
         } else {
