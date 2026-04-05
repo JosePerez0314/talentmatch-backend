@@ -1,4 +1,4 @@
-import cloudinary from '../middlewares/cloudinaryConfig.js'
+import cloudinary from '../lib/cloudinaryConfig.js'
 
 export const uploadPdfToCloudinary = (fileBuffer, originalName) => {
     return new Promise((resolve, reject) => {
@@ -6,7 +6,7 @@ export const uploadPdfToCloudinary = (fileBuffer, originalName) => {
         const uploadStream = cloudinary.uploader.upload_stream(
             {
                 folder: 'talentmatch_resumes',
-                resource_type: 'raw',
+                resource_type: 'auto',
                 public_id: `${Date.now()}-${originalName.replace(/\.pdf$/i, '')}`,
                 format: 'pdf'
             },
