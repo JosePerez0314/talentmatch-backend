@@ -5,6 +5,7 @@ import positions from "./routes/positions.js";
 import uploads from "./routes/uploads.js";
 import vacancies from "./routes/vacancies.js";
 import candidates from "./routes/candidates.js";
+import dashboard from "./routes/dashboard.js";
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -25,6 +26,7 @@ app.use("/api/positions/", positions);
 app.use("/api/uploads/", uploads);
 app.use("/api/vacancies/", vacancies);
 app.use("/api/candidates/", candidates);
+app.use("/api/dashboard", dashboard)
 
 // 4. ERROR LOGGING (LAST MIDDLEWARE)
 app.use((err, req, res, next) => {
