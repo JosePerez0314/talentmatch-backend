@@ -3,6 +3,8 @@ import prisma from "../lib/prisma.js";
 
 export const getSummary = async (req, res, next) => {
     try {
+        const now = new Date();
+
         const [
             positionsCount,
             cvsCount,
@@ -13,8 +15,18 @@ export const getSummary = async (req, res, next) => {
         ] = await Promise.all([
             prisma.position.count(),
             prisma.candidate.count(),
-            prisma.vacancy.count({ where: { openDate: null } }),
-            prisma.vacancy.count({ where: { closeDate: { not: null } } }),
+            prisma.vacancy.count({
+                where: {
+                    openDate: { lte: now },   // lte = less than or equal to 'now'
+                    closeDate: { gte: now }  // gte = greater than or equal to 'now'
+                }
+            }),
+            prisma.vacancy.count(
+                {
+                    where: {
+                        closeDate: { lt: now }
+                    }
+                }),
             prisma.position.findFirst({
                 orderBy: { createdAt: 'desc' },
                 select: { role: true }
