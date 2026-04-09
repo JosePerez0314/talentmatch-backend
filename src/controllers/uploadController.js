@@ -1,7 +1,7 @@
 import pdfWrapper from "../lib/pdfWrapper.cjs";
 import { saveCandidateToDatabase } from "../services/candidateService.js";
 import { uploadPdfToCloudinary } from "../services/cloudinaryService.js";
-import { extractCandidateData } from "../services/openaiService.js"
+import { extractCandidateData } from "../prompts/extractCvPrompt.js"
 
 export const processResumes = async (req, res) => {
     const pdfFiles = req.files;
