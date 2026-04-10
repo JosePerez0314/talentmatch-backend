@@ -129,9 +129,10 @@ model Candidate {
   userId Int
   user User @relation(fields: [userId], references: [id]) 
 
-  /// Foreign key linking this candidate to the specific Position they are evaluated against.
-  positionId Int
-  position Position @relation(fields: [positionId], references: [id])
+/// Optional foreign key. Links the candidate to a specific Position if uploaded directly for a role.
+  /// If null, the candidate exists independently within the Global Talent Pool.
+  positionId Int?
+  position Position? @relation(fields: [positionId], references: [id])
 
   /// The collection of match scores this candidate has received across different Vacancies.
   matchResults MatchResult[]
