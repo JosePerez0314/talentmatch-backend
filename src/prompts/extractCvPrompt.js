@@ -1,4 +1,4 @@
-import { openaikey } from "../services/openaiService";
+import { openaikey } from "../services/openaiService.js";
 
 export const extractCandidateData = async (extractedText) => {
     console.log("Calling OpenAI Responses API with Prompt ID...");

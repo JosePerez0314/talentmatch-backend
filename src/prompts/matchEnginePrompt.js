@@ -1,4 +1,4 @@
-import { openaikey } from "../services/openaiService";
+import { openaikey } from "../services/openaiService.js";
 
 export const matchEngine = async (positionJson, candidateJson) => {
     console.log("Calling OpenAI Responses API with Prompt ID...");
