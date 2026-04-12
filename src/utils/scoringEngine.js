@@ -20,8 +20,10 @@ export const calculateMatchScore = (position, normalizedCandidate) => {
     let finalScore = 0;
     const breakdown = {};
 
+    const candidateTechLower = normalizedCandidate.technicalSkills.map(s => s.toLowerCase());
+
     // Technical skills
-    const matchedTech = position.technicalSkills.filter(skill => normalizedCandidate.technicalSkills.includes(skill));
+    const matchedTech = position.technicalSkills.filter(skill => candidateTechLower.includes(skill.toLowerCase()));
     const techScore = position.technicalSkills.length > 0
         ? (matchedTech.length / position.technicalSkills.length) * (WEIGHTS.TECHNICAL_SKILLS * 100)
         : (WEIGHTS.TECHNICAL_SKILLS * 100);
@@ -46,7 +48,9 @@ export const calculateMatchScore = (position, normalizedCandidate) => {
     breakdown.role = { score: roleScore };
 
     // Languages
-    const matchedLan = position.languages.filter(language => normalizedCandidate.languages.includes(language));
+    const candidateLanLower = normalizedCandidate.languages.map(l => l.toLowerCase());
+
+    const matchedLan = position.languages.filter(language => candidateLanLower.includes(language.toLowerCase()));
     const lanScore = position.languages.length > 0
         ? (matchedLan.length / position.languages.length) * (WEIGHTS.LANGUAGES * 100)
         : (WEIGHTS.LANGUAGES * 100);
@@ -62,7 +66,9 @@ export const calculateMatchScore = (position, normalizedCandidate) => {
     breakdown.education = { score: eduScore, candidateLevel, positionLevel };
 
     // Soft Skills
-    const matchedSoft = position.softSkills.filter(softSkill => normalizedCandidate.softSkills.includes(softSkill));
+    const candidateSoftLower = normalizedCandidate.softSkills.map(sf => sf.toLowerCase());
+
+    const matchedSoft = position.softSkills.filter(softSkill => candidateSoftLower.includes(softSkill.toLowerCase()));
     const softScore = position.softSkills.length > 0
         ? (matchedSoft.length / position.softSkills.length) * (WEIGHTS.SOFT_SKILLS * 100)
         : (WEIGHTS.SOFT_SKILLS * 100)
