@@ -2,6 +2,7 @@ import pdfWrapper from "../lib/pdfWrapper.cjs";
 import { saveCandidateToDatabase } from "../services/candidateService.js";
 import { uploadPdfToCloudinary } from "../services/cloudinaryService.js";
 import { extractCandidateData } from "../prompts/extractCvPrompt.js"
+import { error } from "console";
 
 export const processResumes = async (req, res) => {
     const pdfFiles = req.files;
@@ -10,11 +11,14 @@ export const processResumes = async (req, res) => {
 
     // Validate if one or multiples PDFs files exists
     if (!pdfFiles || pdfFiles.length === 0) return res.status(400).json({ error: "No PDFs uploaded" });
+    if (!userId) return res.status(400).json({ error: "userId is strictly required" });
 
     // parse the variables
     const parsedUserId = parseInt(userId, 10);
-    const parsedPositionId = parseInt(positionId, 10);
+    const parsedPositionId = positionId ? parseInt(positionId, 10) : null;
 
+    if (isNaN(parsedUserId)) return res.status(400).json({ error: "userId must be a valid number" });
+    if (positionId && isNaN(parsedPositionId)) return res.status(400).json({ error: "positionId must be a valid number" });
     const processedCandidates = [];
 
     for (const pdfFile of pdfFiles) {
