@@ -143,6 +143,16 @@ model Candidate {
   updatedAt DateTime @updatedAt
 }
 
+/// Represents the explicit business state of a job vacancy in the hiring lifecycle.
+enum VacancyStatus {
+  /// The vacancy is actively accepting applications. (Default state)
+  OPEN
+  /// The vacancy has passed its deadline and is no longer accepting new CVs.
+  CLOSED
+  /// The position has been successfully filled by a candidate.
+  FILLED
+}
+
 /// Represents an active, publicly or internally open job posting.
 /// It uses the baseline requirements from the Position model to accept candidates.
 model Vacancy {
@@ -157,6 +167,9 @@ model Vacancy {
   
   /// The deadline or closing date for the job posting.
   closeDate DateTime
+
+  /// The current operational state of the vacancy.
+  status VacancyStatus @default(OPEN)
 
   /// Foreign key linking this active posting to its baseline requirements (Position).
   positionId Int
