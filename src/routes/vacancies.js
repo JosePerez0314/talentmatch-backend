@@ -2,6 +2,7 @@ import express from "express";
 import prisma from "../lib/prisma.js"
 import { sendResponseOr404 } from "../lib/responseHandler.js";
 import { catchAsync } from "../lib/catchAsync.js";
+import { error } from "console";
 
 const router = express.Router();
 
@@ -79,6 +80,25 @@ router.get('/:id', catchAsync(async (req, res, next) => {
     })
 
     return sendResponseOr404(res, vacancy, "Vacancy");
+}));
+
+router.patch('/:id/status', catchAsync(async (req, res, next) => {
+    const { status } = req.body;
+
+    const validStatus = ['OPEN', 'CLOSED', 'FILLED'];
+    if (!status || !validStatus.includes(status)) {
+        return res.status(400).json({
+            success: false,
+            error: "Invalid or missing status. Must be OPEN, CLOSED, or FILLED"
+        });
+    }
+
+    const updateVacancy = await prisma.vacancy.update({
+        where: { id: req.idSearch },
+        data: { status: status }
+    });
+
+    return sendResponseOr404(res, updateVacancy, "Vacancy Status");
 }));
 
 router.put('/:id', catchAsync(async (req, res, next) => {
