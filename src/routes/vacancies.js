@@ -2,7 +2,7 @@ import express from "express";
 import prisma from "../lib/prisma.js"
 import { sendResponseOr404 } from "../lib/responseHandler.js";
 import { catchAsync } from "../lib/catchAsync.js";
-import { error } from "console";
+import { matchResult } from "../controllers/matchResultController.js";
 
 const router = express.Router();
 
@@ -80,6 +80,28 @@ router.get('/:id', catchAsync(async (req, res, next) => {
     })
 
     return sendResponseOr404(res, vacancy, "Vacancy");
+}));
+
+router.get('/:id/results', catchAsync(async (req, res, next) => {
+    const allMatchResults = prisma.matchResult.findMany({
+        select: {
+            id: true,
+            matchScore: true,
+            hardSkillsScore: true,
+            experienceScore: true,
+            roleScore: true,
+            languagesScore: true,
+            educationScore: true,
+            softSkillsScore: true,
+            summary: true,
+            redFlags: true,
+            createdAt: true
+        },
+    });
+}));
+
+router.post('/:id/results', catchAsync(async (req, res, next) => {
+    matchResult(req, res, next);
 }));
 
 router.patch('/:id/status', catchAsync(async (req, res, next) => {
