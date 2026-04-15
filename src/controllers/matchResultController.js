@@ -46,17 +46,24 @@ export const matchResult = async (req, res, next) => {
             redFlags: normalizedCandidate.aiAnalysis.redFlags,
         };
 
+        // Clean up old matches for this specific pair to avoid the Unique Constraint error
+        await prisma.matchResult.deleteMany({
+            where: {
+                vacancyId: vacancyId,
+                candidateId: candidateId
+            }
+        });
+
         if (isHireFlag) {
-            const [matchResult, updateVacancy] = await prisma.$transaction([prisma.matchResult.create({
+            const [matchResult, updateVacancy] = prisma.$transaction([prisma.matchResult.create({
                 data: {
                     ...dataMatchScore
                 }
             }),
-            prisma.vacancy.update({
+            await prisma.vacancy.update({
                 where: { id: vacancyId },
                 data: { status: 'FILLED' }
-            })
-
+            }),
             ]);
             return sendResponseOr404(res, { matchResult, updateVacancy }, "Candidate Hired and Vacancy Filled");
         } else {

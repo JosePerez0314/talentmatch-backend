@@ -11,7 +11,7 @@ const vacanciesSelectObject = {
     title: true,
     openDate: true,
     closeDate: true,
-    createdAt: true
+    createdAt: true,
 }
 
 const buildVacanciesData = (payload) => {
@@ -37,7 +37,7 @@ router.post('/', catchAsync(async (req, res, next) => {
     const payload = req.body;
 
     if (!payload || Object.keys(payload).length === 0) return res.status(400).json({ error: "No data provided in the request body" });
-    if (!payload.title || !payload.positionId || !payload.openDate || !payload.closeDate) return res.status(400).json({ success: false, error: "Missing required fields: 'tile', 'openDate', 'closeDate', 'positionId' are mandatory." });
+    if (!payload.title || !payload.positionId || !payload.openDate || !payload.closeDate) return res.status(400).json({ success: false, error: "Missing required fields: 'title', 'openDate', 'closeDate', 'positionId' are mandatory." });
 
     const positionExists = await prisma.position.findUnique({
         where: { id: payload.positionId }
@@ -68,7 +68,7 @@ router.post('/', catchAsync(async (req, res, next) => {
 
 router.param('id', (req, res, next, id) => {
     const idSearch = parseInt(id);
-    if (isNaN(idSearch)) return res.status(400).json({ error: "Vancancies IDs only accept numeric values" });
+    if (isNaN(idSearch)) return res.status(400).json({ error: "Vacancies IDs only accept numeric values" });
 
     req.idSearch = idSearch;
     next();
@@ -76,28 +76,19 @@ router.param('id', (req, res, next, id) => {
 
 router.get('/:id', catchAsync(async (req, res, next) => {
     const vacancy = await prisma.vacancy.findUnique({
-        where: { id: req.idSearch }
+        where: { id: req.idSearch },
+        include: { matchResults: true }
     })
 
     return sendResponseOr404(res, vacancy, "Vacancy");
 }));
 
 router.get('/:id/results', catchAsync(async (req, res, next) => {
-    const allMatchResults = prisma.matchResult.findMany({
-        select: {
-            id: true,
-            matchScore: true,
-            hardSkillsScore: true,
-            experienceScore: true,
-            roleScore: true,
-            languagesScore: true,
-            educationScore: true,
-            softSkillsScore: true,
-            summary: true,
-            redFlags: true,
-            createdAt: true
-        },
+    const allMatchResults = await prisma.matchResult.findMany({
+        where: { vacancyId: req.idSearch }
     });
+
+    return sendResponseOr404(res, allMatchResults, 'Match Results');
 }));
 
 router.post('/:id/results', catchAsync(async (req, res, next) => {
