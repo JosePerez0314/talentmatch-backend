@@ -16,17 +16,11 @@ export const getSummary = async (req, res, next) => {
             prisma.position.count(),
             prisma.candidate.count(),
             prisma.vacancy.count({
-                where: {
-                    openDate: { lte: now },   // lte = less than or equal to 'now'
-                    closeDate: { gte: now }  // gte = greater than or equal to 'now'
-                }
+                where: { status: 'OPEN' }
             }),
-            prisma.vacancy.count(
-                {
-                    where: {
-                        closeDate: { lt: now }
-                    }
-                }),
+            prisma.vacancy.count({
+                where: { status: 'CLOSED' }
+            }),
             prisma.position.findFirst({
                 orderBy: { createdAt: 'desc' },
                 select: { role: true }

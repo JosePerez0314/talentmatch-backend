@@ -10,8 +10,8 @@ export const matchEngine = async (positionJson, candidateJson) => {
             prompt: {
                 id: "pmpt_69d6a93093d4819586e56e0811bf54790c01fbd98d5eb510",
                 variables: {
-                    position: positionJson,
-                    candidate: candidateJson
+                    position: JSON.stringify(positionJson),
+                    candidate: JSON.stringify(candidateJson)
                 }
             },
             input: [

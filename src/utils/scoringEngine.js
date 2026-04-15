@@ -34,10 +34,17 @@ export const calculateMatchScore = (position, normalizedCandidate) => {
     let expScore = 0;
     if (normalizedCandidate.yearsOfExperience >= position.yearsOfExperience) {
         expScore = WEIGHTS.EXPERIENCE * 100;
-    } else if (normalizedCandidate.rawApiPayload.projectHighlights.length > 0) {
-        expScore = WEIGHTS.EXPERIENCE * 50;
     } else {
-        expScore = (normalizedCandidate.yearsOfExperience / position.yearsOfExperience) * (WEIGHTS.EXPERIENCE * 100);
+        const highlights = normalizedCandidate.aiAnalysis?.projectHighlights ||
+            normalizedCandidate.rawApiPayload?.aiAnalysis?.projectHighlights;
+
+        if (highlights && highlights.length > 0) {
+            expScore = WEIGHTS.EXPERIENCE * 50;
+        } else {
+            expScore = position.yearsOfExperience > 0
+                ? (normalizedCandidate.yearsOfExperience / position.yearsOfExperience) * (WEIGHTS.EXPERIENCE * 100)
+                : 0;
+        }
     }
     finalScore += expScore;
     breakdown.experience = { score: expScore };

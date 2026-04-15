@@ -144,6 +144,16 @@ model Candidate {
   updatedAt DateTime @updatedAt
 }
 
+/// Represents the explicit business state of a job vacancy in the hiring lifecycle.
+enum VacancyStatus {
+  /// The vacancy is actively accepting applications. (Default state)
+  OPEN
+  /// The vacancy has passed its deadline and is no longer accepting new CVs.
+  CLOSED
+  /// The position has been successfully filled by a candidate.
+  FILLED
+}
+
 /// Represents an active, publicly or internally open job posting.
 /// It uses the baseline requirements from the Position model to accept candidates.
 model Vacancy {
@@ -158,6 +168,9 @@ model Vacancy {
   
   /// The deadline or closing date for the job posting.
   closeDate DateTime
+
+  /// The current operational state of the vacancy.
+  status VacancyStatus @default(OPEN)
 
   /// Foreign key linking this active posting to its baseline requirements (Position).
   positionId Int
@@ -181,6 +194,32 @@ model MatchResult {
   
   /// The final compatibility percentage (0-100) calculated by the AI.
   matchScore Int
+
+  // --- SCORE BREAKDOWN ---
+  
+  /// Score (0-30) reflecting how well the candidate's technical skills match the position requirements.
+  hardSkillsScore Int
+
+  /// Score (0-20) evaluating the candidate's years of experience against the required baseline.
+  experienceScore Int
+
+  /// Score (0-15) based on the relevance of the candidate's past job titles to the current vacancy.
+  roleScore       Int
+
+  /// Score (0-15) indicating proficiency in the required and optional languages.
+  languagesScore  Int
+
+  /// Score (0-10) assessing if the candidate's educational background meets the job's criteria.
+  educationScore  Int
+
+  /// Score (0-10) evaluating the presence of required interpersonal and professional skills.
+  softSkillsScore Int
+
+  /// A brief, AI-generated text summary justifying the overall match score based on the candidate's profile and the position requirements.
+  summary String @db.Text
+
+  /// A concise alert highlighting critical missing requirements or experience gaps detected by the AI. Optional if no flags are found.
+  redFlags String? @db.Text
 
   /// Foreign key linking to the evaluated candidate.
   candidateId Int
