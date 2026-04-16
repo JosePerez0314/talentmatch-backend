@@ -12,6 +12,7 @@ const vacanciesSelectObject = {
     openDate: true,
     closeDate: true,
     createdAt: true,
+    status: true
 }
 
 const buildVacanciesData = (payload) => {
@@ -25,8 +26,7 @@ const buildVacanciesData = (payload) => {
 router.get('/', catchAsync(async (req, res, next) => {
     const allVacancies = await prisma.vacancy.findMany({
         select: {
-            ...vacanciesSelectObject,
-            matchResults: true
+            ...vacanciesSelectObject
         }
     });
 
@@ -76,8 +76,13 @@ router.param('id', (req, res, next, id) => {
 
 router.get('/:id', catchAsync(async (req, res, next) => {
     const vacancy = await prisma.vacancy.findUnique({
-        where: { id: req.idSearch },
-        include: { matchResults: true }
+        where: {
+            id: req.idSearch,
+            position: {
+                userId: req.user.id
+            }
+        },
+        select: { ...vacanciesSelectObject }
     })
 
     return sendResponseOr404(res, vacancy, "Vacancy");
