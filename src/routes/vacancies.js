@@ -26,9 +26,10 @@ router.get('/', catchAsync(async (req, res, next) => {
     const allVacancies = await prisma.vacancy.findMany({
         select: {
             ...vacanciesSelectObject,
-            matchResults: true
         }
     });
+
+    console.log("USER:", req.user);
 
     return sendResponseOr404(res, allVacancies, "Vacancies");
 }));
@@ -134,5 +135,6 @@ router.delete('/:id', catchAsync(async (req, res, next) => {
 
     return sendResponseOr404(res, vacancy, "Vacancy");
 }));
+
 
 export default router;
