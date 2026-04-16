@@ -144,13 +144,19 @@ model Candidate {
   updatedAt DateTime @updatedAt
 }
 
-/// Represents the explicit business state of a job vacancy in the hiring lifecycle.
+/// Represents the lifecycle state of a Vacancy within the recruitment process.
+/// This enum is used to control UI behavior, recruiter actions, and candidate flow.
 enum VacancyStatus {
-  /// The vacancy is actively accepting applications. (Default state)
+  /// The vacancy is open and actively accepting and evaluating candidates.
+  /// Matching can be executed and new candidates can be considered.
   OPEN
-  /// The vacancy has passed its deadline and is no longer accepting new CVs.
-  CLOSED
-  /// The position has been successfully filled by a candidate.
+
+  /// The recruiter is actively engaging with selected candidates (e.g., interviews, follow-ups).
+  /// No new candidates should be prioritized, but existing evaluations remain accessible.
+  CONTACTING
+
+  /// The hiring process is complete and a candidate has been selected.
+  /// The vacancy is considered closed and no further actions should be taken.
   FILLED
 }
 
