@@ -7,7 +7,7 @@ export const sendResponseOr404 = (res, data, entityName = "Record") => {
     }
 
     return res.status(200).json({
-        succes: true,
+        success: true,
         data: data
     });
 }
