@@ -226,6 +226,11 @@ model MatchResult {
 
   /// A concise alert highlighting critical missing requirements or experience gaps detected by the AI. Optional if no flags are found.
   redFlags String? @db.Text
+  
+/// A cached JSON snapshot of the candidate's parsed profile at the exact moment of evaluation.
+  /// Storing this prevents redundant LLM API calls and guarantees the frontend UI can display 
+  /// the exact data the scoring engine used, ensuring auditability and deterministic rendering.
+  normalizedCandidate Json
 
   /// Foreign key linking to the evaluated candidate.
   candidateId Int
