@@ -1,9 +1,7 @@
 import express from "express";
-import prisma from "../lib/prisma.js"
-import { sendResponseOr404 } from "../lib/responseHandler.js";
 import { catchAsync } from "../lib/catchAsync.js";
 import { matchResult } from "../controllers/matchResultController.js";
-import { changeStatus, getAllVacancies, getOneVacancy, sendVacancies, vacancyParam } from "../controllers/vacancyController.js";
+import { changeStatus, deleteVacancy, getAllVacancies, getOneVacancy, getVacancyResults, sendVacancies, sendVacancyResults, updateVacancy, vacancyParam } from "../controllers/vacancyController.js";
 
 const router = express.Router();
 
@@ -41,15 +39,11 @@ router.get('/:id', catchAsync(async (req, res, next) => {
 }));
 
 router.get('/:id/results', catchAsync(async (req, res, next) => {
-    const allMatchResults = await prisma.matchResult.findMany({
-        where: { vacancyId: req.idSearch }
-    });
-
-    return sendResponseOr404(res, allMatchResults, 'Match Results');
+    getVacancyResults(req, res, next);
 }));
 
 router.post('/:id/results', catchAsync(async (req, res, next) => {
-    matchResult(req, res, next);
+    sendVacancyResults(req, res, next);
 }));
 
 router.patch('/:id/status', catchAsync(async (req, res, next) => {
@@ -57,24 +51,11 @@ router.patch('/:id/status', catchAsync(async (req, res, next) => {
 }));
 
 router.put('/:id', catchAsync(async (req, res, next) => {
-    const payload = req.body;
-
-    const vacancy = await prisma.vacancy.update({
-        where: { id: req.idSearch },
-        data: {
-            ...buildVacanciesData(payload)
-        }
-    });
-
-    return sendResponseOr404(res, vacancy, "Vacancy");
+    updateVacancy(req, res, next);
 }));
 
 router.delete('/:id', catchAsync(async (req, res, next) => {
-    const vacancy = await prisma.vacancy.delete({
-        where: { id: req.idSearch }
-    })
-
-    return sendResponseOr404(res, vacancy, "Vacancy");
+    deleteVacancy(req, res, next);
 }));
 
 

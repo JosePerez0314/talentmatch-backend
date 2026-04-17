@@ -1,5 +1,6 @@
 import prisma from "../lib/prisma.js"
 import { sendResponseOr404 } from "../lib/responseHandler.js"
+import { matchResult } from "./matchResultController.js"
 
 const vacanciesSelectObject = {
     id: true,
@@ -125,6 +126,49 @@ export const getOneVacancy = async (req, res, next) => {
     return sendResponseOr404(res, vacancy, "Vacancy");
 }
 
+export const getVacancyResults = async (req, res, next) => {
+    const allMatchResults = await prisma.matchResult.findMany({
+        where: {
+            vacancyId: req.idSearch,
+            vacancy: {
+                position: {
+                    userId: req.user.id
+                }
+            }
+        },
+        orderBy: {
+            matchScore: 'desc'
+        },
+        take: 10,
+        select: {
+            id: true,
+            matchScore: true,
+            summary: true,
+            redFlags: true,
+            hardSkillsScore: true,
+            experienceScore: true,
+            roleScore: true,
+            languagesScore: true,
+            educationScore: true,
+            softSkillsScore: true,
+            candidate: {
+                select: {
+                    id: true,
+                    fullName: true,
+                    email: true,
+                    fileUrl: true
+                }
+            }
+        }
+    });
+
+    return sendResponseOr404(res, allMatchResults, 'Match Results');
+}
+
+export const sendVacancyResults = async (req, res, next) => {
+    matchResult(req, res, next);
+}
+
 export const changeStatus = async (req, res, next) => {
     const { status } = req.body;
 
@@ -149,3 +193,33 @@ export const changeStatus = async (req, res, next) => {
     return sendResponseOr404(res, updateVacancy, "Vacancy Status");
 }
 
+export const updateVacancy = async (req, res, next) => {
+    const payload = req.body;
+
+    const vacancy = await prisma.vacancy.update({
+        where: {
+            id: req.idSearch,
+            position: {
+                userId: req.user.id
+            }
+        },
+        data: {
+            ...buildVacanciesData(payload)
+        }
+    });
+
+    return sendResponseOr404(res, vacancy, "Vacancy");
+}
+
+export const deleteVacancy = async (req, res, next) => {
+    const vacancy = await prisma.vacancy.delete({
+        where: {
+            id: req.idSearch,
+            position: {
+                userId: req.user.id
+            }
+        }
+    })
+
+    return sendResponseOr404(res, vacancy, "Vacancy");
+}
