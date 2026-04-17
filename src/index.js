@@ -6,6 +6,7 @@ import uploads from "./routes/uploads.js";
 import vacancies from "./routes/vacancies.js";
 import candidates from "./routes/candidates.js";
 import dashboard from "./routes/dashboard.js";
+import { fakeAuth } from './middlewares/fakeAuth.js';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -22,6 +23,9 @@ app.use(cors({
 
 // 2. PARSERS
 app.use(express.json());
+
+// Auth
+app.use(fakeAuth);
 
 // 3. ROUTES
 app.use("/api/users/", users);
