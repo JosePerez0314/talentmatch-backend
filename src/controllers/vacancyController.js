@@ -1,5 +1,6 @@
 import prisma from "../lib/prisma.js"
 import { sendResponseOr404 } from "../lib/responseHandler.js"
+import { computeMatch } from "../services/computeMatch.js"
 import { matchResult } from "./matchResultController.js"
 
 const vacanciesSelectObject = {
@@ -91,7 +92,20 @@ export const sendVacancies = async (req, res, next) => {
             closeDate,
             positionId: payload.positionId
         },
+        include: {
+            position: true
+        }
     });
+
+    const candidates = await prisma.candidate.findMany({
+        where: { userId: req.user.id }
+    });
+
+    await Promise.all(
+        candidates.map(candidate => {
+            computeMatch(prisma, newVacancy, candidate);
+        })
+    )
 
     console.log("Database write sucessful:", newVacancy.id);
     return res.status(201).json({
@@ -151,6 +165,7 @@ export const getVacancyResults = async (req, res, next) => {
             languagesScore: true,
             educationScore: true,
             softSkillsScore: true,
+            createdAt: true,
             candidate: {
                 select: {
                     id: true,
