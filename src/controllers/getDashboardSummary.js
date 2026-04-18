@@ -19,7 +19,7 @@ export const getSummary = async (req, res, next) => {
                 where: { status: 'OPEN' }
             }),
             prisma.vacancy.count({
-                where: { status: 'CLOSED' }
+                where: { status: 'FILLED' }
             }),
             prisma.position.findFirst({
                 orderBy: { createdAt: 'desc' },
