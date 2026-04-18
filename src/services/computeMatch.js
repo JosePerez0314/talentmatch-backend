@@ -2,7 +2,7 @@ import { matchEngine } from "../prompts/matchEnginePrompt.js";
 import { calculateMatchScore } from "../utils/scoringEngine.js";
 
 export const computeMatch = async (prisma, vacancy, candidate) => {
-    const normalizedCandidate = await matchEngine(vacancy.position, rawCandidate.rawApiPayload);
+    const normalizedCandidate = await matchEngine(vacancy.position, candidate.rawApiPayload);
 
     const matchData = calculateMatchScore(vacancy.position, normalizedCandidate);
 

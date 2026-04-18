@@ -92,6 +92,9 @@ export const sendVacancies = async (req, res, next) => {
             closeDate,
             positionId: payload.positionId
         },
+        include: {
+            position: true
+        }
     });
 
     const candidates = await prisma.candidate.findMany({
@@ -162,6 +165,7 @@ export const getVacancyResults = async (req, res, next) => {
             languagesScore: true,
             educationScore: true,
             softSkillsScore: true,
+            createdAt: true,
             candidate: {
                 select: {
                     id: true,
