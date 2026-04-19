@@ -127,7 +127,7 @@ export const vacancyParam = async (req, res, next, id) => {
 }
 
 export const getOneVacancy = async (req, res, next) => {
-    const vacancy = await prisma.vacancy.findUnique({
+    const vacancy = await prisma.vacancy.findFirst({
         where: {
             id: req.idSearch,
             position: {
@@ -211,12 +211,25 @@ export const changeStatus = async (req, res, next) => {
 export const updateVacancy = async (req, res, next) => {
     const payload = req.body;
 
-    const vacancy = await prisma.vacancy.update({
+    const vacancyExists = await prisma.vacancy.findFirst({
         where: {
             id: req.idSearch,
             position: {
                 userId: req.user.id
             }
+        }
+    });
+
+    if (!vacancyExists) {
+        return res.status(404).json({
+            success: false,
+            message: "Vacancy not found or unauthorized"
+        });
+    }
+
+    const vacancy = await prisma.vacancy.update({
+        where: {
+            id: req.idSearch,
         },
         data: {
             ...buildVacanciesData(payload)
@@ -227,12 +240,26 @@ export const updateVacancy = async (req, res, next) => {
 }
 
 export const deleteVacancy = async (req, res, next) => {
-    const vacancy = await prisma.vacancy.delete({
+
+    const vacancyExists = await prisma.vacancy.findFirst({
         where: {
             id: req.idSearch,
             position: {
                 userId: req.user.id
             }
+        }
+    });
+
+    if (!vacancyExists) {
+        return res.status(404).json({
+            success: false,
+            message: "Vacancy not found or unauthorized"
+        });
+    }
+
+    const vacancy = await prisma.vacancy.delete({
+        where: {
+            id: req.idSearch,
         }
     })
 
