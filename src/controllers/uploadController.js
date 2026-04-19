@@ -2,12 +2,15 @@ import pdfWrapper from "../lib/pdfWrapper.cjs";
 import { saveCandidateToDatabase } from "../services/candidateService.js";
 import { uploadPdfToCloudinary } from "../services/cloudinaryService.js";
 import { extractCandidateData } from "../prompts/extractCvPrompt.js"
-import { error } from "console";
+import { matchCandidateToAllVacancies } from "../services/matchingService.js";
+import prisma from "../lib/prisma.js";
 
 export const processResumes = async (req, res) => {
     const pdfFiles = req.files;
 
-    const { userId, positionId } = req.body;
+    const { positionId } = req.body;
+
+    const userId = req.user.id;
 
     // Validate if one or multiples PDFs files exists
     if (!pdfFiles || pdfFiles.length === 0) return res.status(400).json({ error: "No PDFs uploaded" });
@@ -25,6 +28,7 @@ export const processResumes = async (req, res) => {
         console.log(`Processing file: ${pdfFile.originalname}`);
 
         try {
+            // Extract text
             // pass the memory buffer to pdf-parse
             const data = await pdfWrapper.extract(pdfFile.buffer);
             const extractedText = data.text;
@@ -33,18 +37,24 @@ export const processResumes = async (req, res) => {
                 throw new Error("Insufficient text. The PDF might be a scanned image (OCR required).");
             }
 
+            // 2. Extract RAW Candidate JSON (No position context yet)
             console.log(`Sending ${pdfFile.originalname} to OpenAI for extraction...`);
+            const aiCandidateJson = await extractCandidateData(data.text);
 
-            const aiCandidateJson = await extractCandidateData(extractedText);
+            // HARD VALIDATION
+            if (!aiCandidateJson || !aiCandidateJson.fullName) {
+                throw new Error("AI extraction returned invalid structure");
+            }
 
-            console.log(`\n--- Extracted Text from ${pdfFile.originalname} ---`)
-            console.log(JSON.stringify(aiCandidateJson, null, 2));
-
+            // 3. Upload to Cloudinary (FIXED ORDER)
             const cloudinaryUrl = await uploadPdfToCloudinary(pdfFile.buffer, pdfFile.originalname);
-            console.log(`Cloudinary Upload sucess: ${cloudinaryUrl}`);
+            console.log(`Cloudinary Upload success: ${cloudinaryUrl}`);
 
+
+            // 4. Attach URL to payload
             aiCandidateJson.cvUrl = cloudinaryUrl;
 
+            // 5. Save the RAW candidate to the database
             const savedCadidate = await saveCandidateToDatabase(
                 aiCandidateJson,
                 cloudinaryUrl,
@@ -54,6 +64,10 @@ export const processResumes = async (req, res) => {
 
             // Push the database record result into the array, not just the raw JSON
             processedCandidates.push(savedCadidate);
+
+            // MathScore
+            await matchCandidateToAllVacancies(prisma, userId, savedCadidate)
+
         } catch (error) {
             console.error(`Failed to parse PDF: ${pdfFile.originalname}`, error.message);
         }
