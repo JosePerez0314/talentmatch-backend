@@ -33,7 +33,6 @@ export const getAllVacancies = async (req, res, next) => {
     });
 
     console.log("USER:", req.user);
-
     return sendResponseOr404(res, allVacancies, "Vacancies");
 }
 
@@ -141,6 +140,7 @@ export const getOneVacancy = async (req, res, next) => {
 }
 
 export const getVacancyResults = async (req, res, next) => {
+
     const allMatchResults = await prisma.matchResult.findMany({
         where: {
             vacancyId: req.idSearch,
