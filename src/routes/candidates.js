@@ -1,6 +1,6 @@
 import express from "express";
 import { catchAsync } from "../lib/catchAsync.js";
-import { getCandidates } from "../controllers/getAllCandidates.js";
+import { getCandidates } from "../controllers/candidatesController.js";
 
 const router = express.Router();
 
