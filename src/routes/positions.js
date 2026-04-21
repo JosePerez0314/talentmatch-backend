@@ -2,6 +2,7 @@ import express from "express";
 import prisma from "../lib/prisma.js";
 import { sendResponseOr404 } from "../lib/responseHandler.js";
 import { catchAsync } from "../lib/catchAsync.js";
+import { deletePosition, getOnePosition, getPositions, positionsParam, sendPositions, updatePosition } from "../controllers/positionsController.js";
 
 const router = express.Router();
 
@@ -31,84 +32,27 @@ const buildPositionData = (payload) => {
 }
 
 router.get('/', catchAsync(async (req, res, next) => {
-    const allPositions = await prisma.position.findMany({
-        select: {
-            ...positionSelectObject,
-        }
-    });
-
-    return sendResponseOr404(res, allPositions, "Positions")
+    getPositions(req, res, next);
 }));
 
 router.post('/', catchAsync(async (req, res, next) => {
-    const payload = req.body; // JSON container applied in index.js
-
-    // Check if the payload exists and is not empty
-    if (!payload || Object.keys(payload).length === 0) return res.status(400).json({ error: "No data provided in the request body" });
-
-    // Validate the absolute minimum required fields for the Database
-    if (!payload.role || !payload.userId) return res.status(400).json({ success: false, error: "Missing required fields: 'role' and 'userId' are mandatory." });
-
-    const userExists = await prisma.user.findUnique({
-        where: { id: payload.userId }
-    })
-
-    if (!userExists) {
-        return res.status(404).json({
-            success: false,
-            message: `User with ${payload.userId} was not found. Cannot create position`
-        });
-    }
-
-    const newPosition = await prisma.position.create({
-        data: {
-            ...buildPositionData(payload),
-            userId: payload.userId
-        }
-    });
-
-    console.log("Database write successful:", newPosition.role);
-    return res.status(201).json({ message: 'Data received successfully' });
+    sendPositions(req, res, next);
 }));
 
 router.param('id', (req, res, next, id) => {
-    const idSearch = parseInt(id);
-
-    if (isNaN(idSearch)) return res.status(400).json({ error: "Position IDs only accept numeric values" });
-
-    req.idSearch = idSearch;
-    next();
+    positionsParam(req, res, next, id);
 });
 
 router.get('/:id', catchAsync(async (req, res, next) => {
-    const position = await prisma.position.findUnique({
-        where: { id: req.idSearch },
-        select: {
-            ...positionSelectObject
-        }
-    });
-
-    return sendResponseOr404(res, position, "Position");
+    getOnePosition(req, res, next);
 }));
 
 router.put('/:id', catchAsync(async (req, res, next) => {
-    const payload = req.body;
-    const position = await prisma.position.update({
-        where: { id: req.idSearch },
-        data: {
-            ...buildPositionData(payload)
-        }
-    });
-
-    return sendResponseOr404(res, position, "Position");
+    updatePosition(req, res, next);
 }));
 
 router.delete('/:id', catchAsync(async (req, res, next) => {
-    const position = await prisma.position.delete({
-        where: { id: req.idSearch }
-    });
-
-    return sendResponseOr404(res, position, "Position");
+    deletePosition(req, res, next);
 }));
 
 export default router;
