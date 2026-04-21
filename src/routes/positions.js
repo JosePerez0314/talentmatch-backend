@@ -6,31 +6,6 @@ import { deletePosition, getOnePosition, getPositions, positionsParam, sendPosit
 
 const router = express.Router();
 
-const positionSelectObject = {
-    id: true,
-    role: true,
-    yearsOfExperience: true,
-    technicalSkills: true,
-    optionalTechnicalSkills: true,
-    softSkills: true,
-    description: true,
-    education: true,
-    createdAt: true
-};
-
-const buildPositionData = (payload) => {
-    return {
-        role: payload.role,
-        yearsOfExperience: payload.yearsOfExperience,
-        technicalSkills: payload.technicalSkills,
-        optionalTechnicalSkills: payload.optionalTechnicalSkills,
-        softSkills: payload.softSkills,
-        description: payload.description,
-        education: payload.education,
-        languages: payload.languages,
-    };
-}
-
 router.get('/', catchAsync(async (req, res, next) => {
     getPositions(req, res, next);
 }));
