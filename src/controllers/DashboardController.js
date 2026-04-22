@@ -1,4 +1,3 @@
-import { title } from "process";
 import prisma from "../lib/prisma.js";
 
 export const getSummary = async (req, res, next) => {
