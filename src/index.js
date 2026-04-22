@@ -26,16 +26,19 @@ app.use(cors({
 // 2. PARSERS
 app.use(express.json());
 
+app.use("/api/users/", users);
+
 // Auth
 app.use(authMiddleware);
 
 // 3. ROUTES
-app.use("/api/users/", users);
 app.use("/api/positions/", positions);
 app.use("/api/uploads/", uploads);
 app.use("/api/vacancies/", vacancies);
 app.use("/api/candidates/", candidates);
 app.use("/api/dashboard", dashboard)
+
+
 
 // 4. ERROR LOGGING (LAST MIDDLEWARE)
 app.use((err, req, res, next) => {
