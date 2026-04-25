@@ -4,12 +4,12 @@ import { uploadPdfToCloudinary } from "../services/cloudinaryService.js";
 import { extractCandidateData } from "../prompts/extractCvPrompt.js"
 import { matchCandidateToAllVacancies } from "../services/matchingService.js";
 import prisma from "../lib/prisma.js";
+import { processCandidateCv } from "../services/cvProcessingService.js";
 
 export const processResumes = async (req, res) => {
     const pdfFiles = req.files;
 
-    const { positionId } = req.body;
-
+    const positionId = req.body?.positionId ?? null;
     const userId = req.user.id;
 
     // Validate if one or multiples PDFs files exists
@@ -37,36 +37,37 @@ export const processResumes = async (req, res) => {
                 throw new Error("Insufficient text. The PDF might be a scanned image (OCR required).");
             }
 
-            // 2. Extract RAW Candidate JSON (No position context yet)
             console.log(`Sending ${pdfFile.originalname} to OpenAI for extraction...`);
-            const aiCandidateJson = await extractCandidateData(data.text);
+            const { candidate, cacheHit } = await processCandidateCv(extractedText, userId);
 
             // HARD VALIDATION
-            if (!aiCandidateJson || !aiCandidateJson.fullName) {
+            if (!candidate?.fullName) {
                 throw new Error("AI extraction returned invalid structure");
             }
 
-            // 3. Upload to Cloudinary (FIXED ORDER)
-            const cloudinaryUrl = await uploadPdfToCloudinary(pdfFile.buffer, pdfFile.originalname);
-            console.log(`Cloudinary Upload success: ${cloudinaryUrl}`);
-
-
-            // 4. Attach URL to payload
-            aiCandidateJson.cvUrl = cloudinaryUrl;
-
-            // 5. Save the RAW candidate to the database
-            const savedCadidate = await saveCandidateToDatabase(
-                aiCandidateJson,
-                cloudinaryUrl,
-                parsedUserId,
-                parsedPositionId
+            // 3. Upload to Cloudinary 
+            const cloudinaryUrl = await uploadPdfToCloudinary(
+                pdfFile.buffer,
+                pdfFile.originalname,
+                userId
             );
 
+            console.log(`Cloudinary Upload success: ${cloudinaryUrl}`);
+
+            if (!cacheHit) {
+                await prisma.candidate.update({
+                    where: { id: candidate.id },
+                    data: {
+                        fileUrl: cloudinaryUrl,
+                    }
+                });
+            }
+
             // Push the database record result into the array, not just the raw JSON
-            processedCandidates.push(savedCadidate);
+            processedCandidates.push(candidate);
 
             // MathScore
-            await matchCandidateToAllVacancies(prisma, userId, savedCadidate)
+            await matchCandidateToAllVacancies(prisma, userId, candidate);
 
         } catch (error) {
             console.error(`Failed to parse PDF: ${pdfFile.originalname}`, error.message);

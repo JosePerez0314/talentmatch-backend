@@ -1,6 +1,6 @@
 import prisma from "../lib/prisma.js"
 import { sendResponseOr404 } from "../lib/responseHandler.js"
-import { computeMatch } from "../services/computeMatch.js"
+import { computeMatch } from "../services/computeMatchService.js"
 import { matchResult } from "./matchResultController.js"
 
 const vacanciesSelectObject = {

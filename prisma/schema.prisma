@@ -89,6 +89,9 @@ model Candidate {
   /// Unique identifier generated automatically by the database.
   id Int @id @default(autoincrement())
 
+  /// A unique SHA-256 hash of the parsed CV text. Used as a caching mechanism to prevent duplicate OpenAI API calls.
+  hash String @unique
+
   /// The full name of the candidate, extracted by the AI.
   fullName String
   
@@ -96,7 +99,7 @@ model Candidate {
   email String
   
   /// The cloud hosting URL (e.g., Cloudinary) where the original PDF is stored.
-  fileUrl String @unique
+  fileUrl String?
 
   /// The primary job role the candidate is applying for or qualified for.
   role String

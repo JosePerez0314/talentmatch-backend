@@ -1,4 +1,4 @@
-import { computeMatch } from "./computeMatch.js";
+import { computeMatch } from "./computeMatchService.js";
 
 export const matchCandidateToAllVacancies = async (prisma, userId, candidate) => {
     const vacancies = await prisma.vacancy.findMany({
