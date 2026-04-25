@@ -1,5 +1,5 @@
 import prisma from "../lib/prisma.js";
-import { computeMatch } from "../services/computeMatch.js";
+import { computeMatch } from "../services/computeMatchService.js";
 
 export const matchResult = async (req, res, next) => {
     const { vacancyId, candidateId } = req.body;
