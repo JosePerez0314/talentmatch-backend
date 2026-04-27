@@ -68,7 +68,7 @@ export const sendPositions = async (req, res, next) => {
 
     const newPosition = await prisma.position.create({
         data: {
-            data,
+            ...data,
             userId: req.user.id
         }
     });
