@@ -12,19 +12,31 @@ export const getSummary = async (req, res, next) => {
             lastPosition,
             lastCv
         ] = await Promise.all([
-            prisma.position.count(),
-            prisma.candidate.count(),
+            prisma.position.count({ where: { userId: req.user.id } }),
+            prisma.candidate.count({ where: { userId: req.user.id } }),
             prisma.vacancy.count({
-                where: { status: 'OPEN' }
+                where: {
+                    status: 'OPEN',
+                    userId: req.user.id
+                }
             }),
             prisma.vacancy.count({
-                where: { status: 'FILLED' }
+                where: {
+                    status: 'FILLED',
+                    userId: req.user.id
+                }
             }),
             prisma.position.findFirst({
+                where: {
+                    userId: req.user.id
+                },
                 orderBy: { createdAt: 'desc' },
                 select: { role: true }
             }),
             prisma.candidate.findFirst({
+                where: {
+                    userId: req.user.id
+                },
                 orderBy: { createdAt: 'desc' },
                 select: { fullName: true }
             })
@@ -43,10 +55,6 @@ export const getSummary = async (req, res, next) => {
         });
 
     } catch (error) {
-        console.error("[Dashboard Summary Error]:", error);
-        return res.status(500).json({
-            success: false,
-            error: "Failed to fetch dashboard summary."
-        });
+        next(error)
     }
 }

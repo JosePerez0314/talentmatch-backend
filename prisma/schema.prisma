@@ -1,7 +1,7 @@
-/// 
 generator client {
   provider = "prisma-client-js"
 }
+
 generator docs {
   provider = "node node_modules/prisma-docs-generator"
   output   = "../docs"
@@ -15,136 +15,202 @@ datasource db {
 /// Represents an HR Administrator or Recruiter using the TalentMatch AI platform.
 model User {
   /// Unique identifier generated automatically by the database.
-  id       Int    @id @default(autoincrement())
-  
+  id         Int           @id @default(autoincrement())
   /// The HR Admin's corporate email address. Used for authentication.
-  email    String @unique
-  
+  email      String        @unique
   /// Hashed password for secure login. Never expose this to the frontend.
-  password String
-
-  /// The list of job requirements (Positions) created by this specific HR Admin.
-  positions  Position[]
-  
-  /// The list of candidates uploaded and managed by this specific HR Admin.
-  candidates Candidate[]
-
+  password   String
   /// Timestamp of when the HR Admin account was created.
-  createdAt DateTime @default(now())
-  
+  createdAt  DateTime      @default(now())
   /// Timestamp of the last time the HR Admin account details were updated.
-  updatedAt DateTime @updatedAt
+  updatedAt  DateTime      @updatedAt
+  role   UserRole @default(USER)
+  candidates Candidate[]
+  positions  Position[]
+}
+
+/// Defines the access level of a system user for Role-Based Access Control (RBAC).
+/// This enum controls authorization across the entire TalentMatch AI platform.
+///
+/// - ADMIN: Has full system access, including all users, analytics, and system-wide operations.
+/// - USER: Standard recruiter account with tenant-scoped access only (own positions, candidates, and vacancies).
+enum UserRole {
+  ADMIN
+  USER
 }
 
 /// Defines the specific job requirements created by an HR Admin. 
 /// This model acts as the baseline criteria for the AI to evaluate Candidates against.
 model Position {
   /// Unique identifier generated automatically by the database.
-  id Int @id @default(autoincrement())
-  
+  id                      Int         @id @default(autoincrement())
   /// The official title of the job opening (e.g., "Senior Backend Developer").
-  role String
-  
+  role                    String
   /// The strict minimum years of professional experience required.
-  yearsOfExperience Int
-  
+  yearsOfExperience       Int
   /// Required hard skills for the role (e.g., "Node.js, Express, MySQL, Prisma").
-  technicalSkills Json
-  
+  technicalSkills         Json
   /// "Nice-to-have" skills that boost a candidate's match score but are not mandatory.
   optionalTechnicalSkills Json
-  
   /// Required interpersonal skills (e.g., "Leadership, Clear Communication").
-  softSkills Json
-  
+  softSkills              Json
   /// A detailed summary of the day-to-day responsibilities and expectations.
-  description String
-  
+  description             String
   /// Minimum academic background required (e.g., "Systems Engineering Degree").
-  education String
-  
+  education               String
   /// Spoken languages required for the role (e.g., "English (B2), Spanish (Native)").
-  languages Json
-
+  languages               Json
   /// Foreign key linking this position to the HR Admin who created it.
-  userId Int 
-  user User @relation(fields: [userId], references: [id])
-
+  userId                  Int
   /// Timestamp of when this job requirement was drafted.
-  createdAt DateTime @default(now())
-  
+  createdAt               DateTime    @default(now())
   /// Timestamp of the last time HR modified these requirements.
-  updatedAt DateTime @updatedAt
+  updatedAt               DateTime    @updatedAt
+  candidates              Candidate[]
+  user                    User        @relation(fields: [userId], references: [id])
+  vacancies               Vacancy[]
 
-  /// The active job postings (Vacancies) opened using these baseline requirements.
-  vacancies Vacancy[]
-  
-  /// The pool of resumes evaluated against these specific requirements.
-  candidates Candidate[]
+  @@index([userId, createdAt])
 }
 
 /// Stores the AI-parsed information extracted from the candidate's uploaded CV.
 /// The raw data is saved in a JSON field, and specific metrics are mapped to individual columns for fast querying.
 model Candidate {
   /// Unique identifier generated automatically by the database.
-  id Int @id @default(autoincrement())
-
-  /// A unique SHA-256 hash of the parsed CV text. Used as a caching mechanism to prevent duplicate OpenAI API calls.
-  hash String @unique
-
+  id                      Int           @id @default(autoincrement())
   /// The full name of the candidate, extracted by the AI.
-  fullName String
-  
+  fullName                String
   /// The contact email of the candidate.
-  email String
-  
+  email                   String
+  /// Timestamp of when the CV was uploaded and parsed.
+  createdAt               DateTime      @default(now())
+  /// A brief AI-generated summary of the candidate's professional profile.
+  description             String
+  /// The candidate's highest level of formal education.
+  education               String
   /// The cloud hosting URL (e.g., Cloudinary) where the original PDF is stored.
-  fileUrl String?
-
-  /// The primary job role the candidate is applying for or qualified for.
-  role String
-  
-  /// Total years of professional experience, parsed as an integer for mathematical comparison.
-  yearsOfExperience Int
-  
-  /// Core technical skills extracted from the CV.
-  technicalSkills Json
-  
+  fileUrl                 String?
+  /// Spoken languages identified in the CV.
+  languages               Json
   /// Additional or secondary technical skills found in the CV.
   optionalTechnicalSkills Json
-  
-  /// Interpersonal and communication skills identified by the AI.
-  softSkills Json
-  
-  /// A brief AI-generated summary of the candidate's professional profile.
-  description String
-  
-  /// The candidate's highest level of formal education.
-  education String
-  
-  /// Spoken languages identified in the CV.
-  languages Json
-
-/// The complete, raw JSON payload returned by the AI for backup and auditing.
-  rawApiPayload Json
-
-  /// Foreign key linking this candidate to the HR Admin who uploaded the CV.
-  userId Int
-  user User @relation(fields: [userId], references: [id]) 
-
-/// Optional foreign key. Links the candidate to a specific Position if uploaded directly for a role.
+  /// Optional foreign key. Links the candidate to a specific Position if uploaded directly for a role.
   /// If null, the candidate exists independently within the Global Talent Pool.
-  positionId Int?
-  position Position? @relation(fields: [positionId], references: [id])
-
-  /// The collection of match scores this candidate has received across different Vacancies.
-  matchResults MatchResult[]
-
-  /// Timestamp of when the CV was uploaded and parsed.
-  createdAt DateTime @default(now())
-  
+  positionId              Int?
+  /// The primary job role the candidate is applying for or qualified for.
+  role                    String
+  /// Interpersonal and communication skills identified by the AI.
+  softSkills              Json
+  /// Core technical skills extracted from the CV.
+  technicalSkills         Json
   /// Timestamp of the last update to the candidate's profile.
-  updatedAt DateTime @updatedAt
+  updatedAt               DateTime      @updatedAt
+  /// Foreign key linking this candidate to the HR Admin who uploaded the CV.
+  userId                  Int
+  /// Total years of professional experience, parsed as an integer for mathematical comparison.
+  yearsOfExperience       Int
+  /// A unique SHA-256 hash of the parsed CV text. Used as a caching mechanism to prevent duplicate OpenAI API calls.
+  hash                    String        @unique
+  /// The complete, raw JSON payload returned by the AI for backup and auditing.
+  rawApiPayload           Json
+  position                Position?     @relation(fields: [positionId], references: [id])
+  user                    User          @relation(fields: [userId], references: [id])
+  matchResults            MatchResult[]
+  
+/// Index to optimize queries filtering candidates by owner (userId).
+/// Prevents full table scans when retrieving user-specific candidates.
+/// Critical for dashboard and tenant isolation queries.
+@@index([userId, createdAt])
+
+/// Index to optimize queries filtering candidates by position association.
+/// Used when retrieving candidates linked to a specific position.
+@@index([positionId])
+}
+
+/// Represents an active, publicly or internally open job posting.
+/// It uses the baseline requirements from the Position model to accept candidates.
+model Vacancy {
+  /// Unique identifier generated automatically by the database.
+  id           Int           @id @default(autoincrement())
+  /// The public-facing title of the active job posting.
+  title        String
+  /// The date the job posting officially opened for applications.
+  openDate     DateTime
+  /// The deadline or closing date for the job posting.
+  closeDate    DateTime
+  /// Foreign key linking this active posting to its baseline requirements (Position).
+  positionId   Int
+  /// Timestamp of when the vacancy was created in the system.
+  createdAt    DateTime      @default(now())
+  /// Timestamp of the last update to the vacancy details.
+  updatedAt    DateTime      @updatedAt
+  /// The current operational state of the vacancy.
+  status       VacancyStatus @default(OPEN)
+  matchResults MatchResult[]
+  position     Position      @relation(fields: [positionId], references: [id])
+
+/// Foreign key linking vacancy directly to the HR Admin owner.
+/// Enables fast dashboard queries without JOINs through Position.
+  userId Int
+
+/// Index to optimize tenant-scoped vacancy queries (dashboard + filtering).
+  @@index([userId, status])
+
+  /// Index to optimize filtering vacancies by status (OPEN, CONTACTING, FILLED).
+  /// Used heavily in dashboard metrics and vacancy lifecycle queries.
+  @@index([status])
+
+  /// Index to optimize joins between Vacancy and Position.
+  /// Required for queries filtering vacancies through positionId.
+  @@index([positionId])
+}
+
+/// The junction table storing the AI's final evaluation score.
+/// Connects a specific Candidate to a specific Vacancy.
+model MatchResult {
+  /// Unique identifier generated automatically by the database.
+  id                  Int       @id @default(autoincrement())
+  /// The final compatibility percentage (0-100) calculated by the AI.
+  matchScore          Int
+  /// Foreign key linking to the evaluated candidate.
+  candidateId         Int
+  /// Foreign key linking to the specific job posting they were evaluated for.
+  vacancyId           Int
+  /// Timestamp of when the AI completed the evaluation and generated the score.
+  createdAt           DateTime  @default(now())
+  /// Score (0-10) assessing if the candidate's educational background meets the job's criteria.
+  educationScore      Int
+  /// Score (0-20) evaluating the candidate's years of experience against the required baseline.
+  experienceScore     Int
+  /// Score (0-30) reflecting how well the candidate's technical skills match the position requirements.
+  hardSkillsScore     Int
+  /// Score (0-15) indicating proficiency in the required and optional languages.
+  languagesScore      Int
+  /// A cached JSON snapshot of the candidate's parsed profile at the exact moment of evaluation.
+  /// Storing this prevents redundant LLM API calls and guarantees the frontend UI can display 
+  /// the exact data the scoring engine used, ensuring auditability and deterministic rendering.
+  normalizedCandidate Json
+  /// A concise alert highlighting critical missing requirements or experience gaps detected by the AI. Optional if no flags are found.
+  redFlags            String?   @db.Text
+  /// Score (0-15) based on the relevance of the candidate's past job titles to the current vacancy.
+  roleScore           Int
+  /// Score (0-10) evaluating the presence of required interpersonal and professional skills.
+  softSkillsScore     Int
+  /// A brief, AI-generated text summary justifying the overall match score based on the candidate's profile and the position requirements.
+  summary             String    @db.Text
+  candidate           Candidate @relation(fields: [candidateId], references: [id])
+  vacancy             Vacancy   @relation(fields: [vacancyId], references: [id])
+
+ /// Ensures a candidate can only have one match score per vacancy.
+  @@unique([candidateId, vacancyId])
+
+  /// Index to optimize queries fetching match results by candidate.
+  /// Used in candidate profile analytics and history views.
+  @@index([candidateId])
+
+  /// Index to optimize queries fetching match results by vacancy.
+  /// Critical for ranking candidates inside a vacancy dashboard.
+  @@index([vacancyId])
 }
 
 /// Represents the lifecycle state of a Vacancy within the recruitment process.
@@ -153,99 +219,11 @@ enum VacancyStatus {
   /// The vacancy is open and actively accepting and evaluating candidates.
   /// Matching can be executed and new candidates can be considered.
   OPEN
-
   /// The recruiter is actively engaging with selected candidates (e.g., interviews, follow-ups).
   /// No new candidates should be prioritized, but existing evaluations remain accessible.
   CONTACTING
-
   /// The hiring process is complete and a candidate has been selected.
   /// The vacancy is considered closed and no further actions should be taken.
   FILLED
 }
 
-/// Represents an active, publicly or internally open job posting.
-/// It uses the baseline requirements from the Position model to accept candidates.
-model Vacancy {
-  /// Unique identifier generated automatically by the database.
-  id Int @id @default(autoincrement())
-  
-  /// The public-facing title of the active job posting.
-  title String
-  
-  /// The date the job posting officially opened for applications.
-  openDate DateTime
-  
-  /// The deadline or closing date for the job posting.
-  closeDate DateTime
-
-  /// The current operational state of the vacancy.
-  status VacancyStatus @default(OPEN)
-
-  /// Foreign key linking this active posting to its baseline requirements (Position).
-  positionId Int
-  position Position @relation(fields: [positionId], references: [id])
-
-  /// The collection of match scores generated for candidates applying to this vacancy.
-  matchResults MatchResult[]
-
-  /// Timestamp of when the vacancy was created in the system.
-  createdAt DateTime @default(now())
-  
-  /// Timestamp of the last update to the vacancy details.
-  updatedAt DateTime @updatedAt
-}
-
-/// The junction table storing the AI's final evaluation score.
-/// Connects a specific Candidate to a specific Vacancy.
-model MatchResult {
-  /// Unique identifier generated automatically by the database.
-  id Int @id @default(autoincrement())
-  
-  /// The final compatibility percentage (0-100) calculated by the AI.
-  matchScore Int
-
-  // --- SCORE BREAKDOWN ---
-  
-  /// Score (0-30) reflecting how well the candidate's technical skills match the position requirements.
-  hardSkillsScore Int
-
-  /// Score (0-20) evaluating the candidate's years of experience against the required baseline.
-  experienceScore Int
-
-  /// Score (0-15) based on the relevance of the candidate's past job titles to the current vacancy.
-  roleScore       Int
-
-  /// Score (0-15) indicating proficiency in the required and optional languages.
-  languagesScore  Int
-
-  /// Score (0-10) assessing if the candidate's educational background meets the job's criteria.
-  educationScore  Int
-
-  /// Score (0-10) evaluating the presence of required interpersonal and professional skills.
-  softSkillsScore Int
-
-  /// A brief, AI-generated text summary justifying the overall match score based on the candidate's profile and the position requirements.
-  summary String @db.Text
-
-  /// A concise alert highlighting critical missing requirements or experience gaps detected by the AI. Optional if no flags are found.
-  redFlags String? @db.Text
-  
-/// A cached JSON snapshot of the candidate's parsed profile at the exact moment of evaluation.
-  /// Storing this prevents redundant LLM API calls and guarantees the frontend UI can display 
-  /// the exact data the scoring engine used, ensuring auditability and deterministic rendering.
-  normalizedCandidate Json
-
-  /// Foreign key linking to the evaluated candidate.
-  candidateId Int
-  candidate   Candidate @relation(fields: [candidateId], references: [id])
-
-  /// Foreign key linking to the specific job posting they were evaluated for.
-  vacancyId   Int
-  vacancy     Vacancy @relation(fields: [vacancyId], references: [id])
-
-  /// Ensures a candidate can only have one definitive match score per vacancy.
-  @@unique([candidateId, vacancyId])
-  
-  /// Timestamp of when the AI completed the evaluation and generated the score.
-  createdAt DateTime @default(now())
-}
