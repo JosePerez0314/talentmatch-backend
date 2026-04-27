@@ -10,16 +10,40 @@ export const authMiddleware = (req, res, next) => {
         });
     }
 
-    const token = authHeader.split(" ")[1];
+    const parts = authHeader.split(" ");
+    if (parts.length !== 2) {
+        return res.status(401).json({
+            success: false,
+            error: "Malformed Token"
+        });
+    }
+
+    const token = parts[1];
 
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-        req.user = { id: decoded.userId };
-        console.log(req.headers.authorization);
+        if (!decoded.userId || !decoded.role) {
+            return res.status(401).json({
+                success: false,
+                error: "Invalid token payload"
+            });
+        }
+
+        req.user = {
+            id: decoded.userId,
+            role: decoded.role
+        };
 
         next();
     } catch (error) {
+        if (error.name === "TokenExpiredError") {
+            return res.status(401).json({
+                success: false,
+                error: "Session expired"
+            });
+        }
+
         return res.status(401).json({
             success: false,
             error: "Invalid or expired token"

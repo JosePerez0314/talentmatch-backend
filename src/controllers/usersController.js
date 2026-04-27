@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 
 import prisma from "../lib/prisma.js";
 import bcrypt from "bcrypt";
+import { sendResponseOr404 } from "../lib/responseHandler.js";
 
 export const createUser = async (req, res, next) => {
     const payload = req.body;
@@ -32,44 +33,62 @@ export const createUser = async (req, res, next) => {
 }
 
 export const loginUser = async (req, res, next) => {
-    const { email, password } = req.body;
-    const emailNormalized = email.toLowerCase().trim();
+    try {
+        const { email, password } = req.body;
 
-    const user = await prisma.user.findUnique({
-        where: { email: emailNormalized },
-        select: {
-            id: true,
-            email: true,
-            password: true
+        if (!email || !password) {
+            return res.status(400).json({
+                success: false,
+                error: "Email and password are required"
+            });
         }
-    });
 
-    if (!user) {
-        return res.status(401).json({
+        const emailNormalized = email.toLowerCase().trim();
+
+        const user = await prisma.user.findUnique({
+            where: { email: emailNormalized },
+            select: {
+                id: true,
+                email: true,
+                password: true,
+                role: true
+            }
+        });
+
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: "Invalid email or password"
+            })
+        }
+
+        const isPasswordValid = await bcrypt.compare(password, user.password);
+
+        if (!isPasswordValid) {
+            return res.status(401).json({
+                success: false,
+                error: "Invalid email or password"
+            })
+        }
+
+        const token = jwt.sign(
+            { userId: user.id, role: user.role },
+            process.env.JWT_SECRET,
+            { expiresIn: "1d" }
+        );
+
+        console.log("Searching email:", emailNormalized);
+
+        return res.status(200).json({
+            success: true,
+            token
+        });
+    } catch (error) {
+        console.error(error);
+
+        return res.status(500).json({
             success: false,
-            message: "Invalid email or password"
-        })
+            error: "Internal Server Error"
+        });
     }
-
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-
-    if (!isPasswordValid) {
-        return res.status(401).json({
-            success: false,
-            error: "Invalid email or password"
-        })
-    }
-
-    const token = jwt.sign(
-        { userId: user.id },
-        process.env.JWT_SECRET,
-        { expiresIn: "1d" }
-    );
-
-    console.log("Searching email:", emailNormalized);
-
-    return res.status(200).json({
-        success: true,
-        token
-    });
 };

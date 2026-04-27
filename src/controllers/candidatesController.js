@@ -3,6 +3,7 @@ import { sendResponseOr404 } from "../lib/responseHandler.js";
 
 export const getCandidates = async (req, res, next) => {
     const allCandidates = await prisma.candidate.findMany({
+        where: { userId: req.user.id },
         select: {
             id: true,
             fullName: true,
