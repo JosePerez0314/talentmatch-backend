@@ -89,6 +89,7 @@ export const sendVacancies = async (req, res, next) => {
             title: payload.title,
             openDate,
             closeDate,
+            userId: req.user.id,
             positionId: payload.positionId
         },
         include: {
