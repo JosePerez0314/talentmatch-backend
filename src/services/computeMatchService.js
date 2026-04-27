@@ -1,12 +1,15 @@
 import { matchEngine } from "../prompts/matchEnginePrompt.js";
 import { calculateMatchScore } from "../utils/scoringEngine.js";
 
-export const computeMatch = async (prisma, vacancy, candidate) => {
+export const computeMatch = async (vacancy, candidate) => {
     const normalizedCandidate = await matchEngine(vacancy.position, candidate.rawApiPayload);
 
     const matchData = calculateMatchScore(vacancy.position, normalizedCandidate);
 
-    const baseData = {
+    return {
+        candidateId: candidate.id,
+        vacancyId: vacancy.id,
+
         matchScore: Math.round(matchData.totalScore),
 
         hardSkillsScore: Math.round(matchData.breakdown.technical?.score ?? matchData.breakdown.technical ?? 0),
@@ -21,19 +24,4 @@ export const computeMatch = async (prisma, vacancy, candidate) => {
 
         normalizedCandidate: normalizedCandidate
     };
-
-    await prisma.matchResult.upsert({
-        where: {
-            candidateId_vacancyId: {
-                candidateId: candidate.id,
-                vacancyId: vacancy.id,
-            }
-        },
-        update: baseData,
-        create: {
-            candidateId: candidate.id,
-            vacancyId: vacancy.id,
-            ...baseData
-        }
-    });
 }
