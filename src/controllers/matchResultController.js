@@ -8,9 +8,7 @@ export const matchResult = async (req, res, next) => {
         const vacancy = await prisma.vacancy.findFirst({
             where: {
                 id: vacancyId,
-                position: {
-                    userId: req.user.id
-                }
+                userId: req.user.id
             },
             include: { position: true }
         });

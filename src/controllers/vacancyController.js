@@ -146,9 +146,7 @@ export const getVacancyResults = async (req, res, next) => {
         where: {
             vacancyId: req.idSearch,
             vacancy: {
-                position: {
-                    userId: req.user.id
-                }
+                userId: req.user.id
             }
         },
         orderBy: {
@@ -166,6 +164,7 @@ export const getVacancyResults = async (req, res, next) => {
             languagesScore: true,
             educationScore: true,
             softSkillsScore: true,
+            normalizedCandidate: true,
             createdAt: true,
             candidate: {
                 select: {
