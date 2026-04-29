@@ -9,7 +9,7 @@ export const updateUserRoleSchema = z.object({
     })
 });
 
-export const DeleteUserSchema = z.object({
+export const deleteUserSchema = z.object({
     params: z.object({
         id: z.coerce.number().int().positive("Invalid user ID")
     })

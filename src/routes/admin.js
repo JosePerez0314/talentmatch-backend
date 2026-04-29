@@ -9,7 +9,7 @@ import {
     deleteUser,
     updateUserRole
 } from "../controllers/adminController.js";
-import { DeleteUserSchema, updateUserRoleSchema } from "../validations/adminValidation.js";
+import { deleteUserSchema, updateUserRoleSchema } from "../validations/adminValidation.js";
 
 const router = express.Router();
 
@@ -22,6 +22,6 @@ router.get("/stats", catchAsync(getStats))
 // user management
 router.get("/users", catchAsync(getAllUsers));
 router.put("/users/:id/role", validate(updateUserRoleSchema), catchAsync(updateUserRole));
-router.delete("/users/:id", validate(DeleteUserSchema), catchAsync(deleteUser));
+router.delete("/users/:id", validate(deleteUserSchema), catchAsync(deleteUser));
 
 export default router;

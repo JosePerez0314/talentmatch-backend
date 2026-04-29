@@ -1,10 +1,12 @@
 export const validate = (schema) => (req, res, next) => {
     try {
-        schema.parse({
+        const parsed = schema.parse({
             body: req.body,
             params: req.params,
             query: req.query
         });
+
+        req.validated = parsed
 
         return next();
     } catch (error) {
