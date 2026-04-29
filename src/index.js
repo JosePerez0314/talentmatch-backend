@@ -9,7 +9,7 @@ import vacancies from "./routes/vacancies.js";
 import candidates from "./routes/candidates.js";
 import dashboard from "./routes/dashboard.js";
 import admin from "./routes/admin.js";
-import { authMiddleware } from './middlewares/authMiddleware.js';
+import { authMiddleware } from './middlewares/auth/authMiddleware.js';
 
 const app = express();
 const port = process.env.PORT || 3000;

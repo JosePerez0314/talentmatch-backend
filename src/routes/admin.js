@@ -1,6 +1,6 @@
 import express from "express";
-import { authMiddleware } from "../middlewares/authMiddleware.js";
-import { requireRole } from "../middlewares/roleMiddleware.js";
+import { authMiddleware } from "../middlewares/auth/authMiddleware.js";
+import { requireRole } from "../middlewares/auth/roleMiddleware.js";
 import { catchAsync } from "../lib/catchAsync.js";
 import {
     getStats,
