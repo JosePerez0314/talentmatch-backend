@@ -35,7 +35,8 @@
     "openai": "^6.33.0",
     "p-limit": "^7.3.0",
     "pdf-parse": "^1.1.1",
-    "pdfkit": "^0.18.0"
+    "pdfkit": "^0.18.0",
+    "zod": "^4.3.6"
   },
   "prisma": {
     "seed": "node prisma/seed.js"

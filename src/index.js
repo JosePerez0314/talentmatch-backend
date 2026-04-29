@@ -14,6 +14,9 @@ import corsMiddleware from "./middlewares/security/corsMiddleware.js";
 import helmetMiddleware from "./middlewares/security/helmetMiddleware.js";
 import rateLimitMiddleware from "./middlewares/security/rateLimitMiddleware.js";
 
+// ERRORS MIDDLWARES
+import { errorHandler } from "./middlewares/error/errorHandler.js";
+
 // AUTH
 import authMiddleware from "./middlewares/auth/authMiddleware.js";
 
@@ -42,18 +45,8 @@ app.use("/api/vacancies", vacancies);
 app.use("/api/candidates", candidates);
 app.use("/api/dashboard", dashboard);
 
-// ERROR LOGGING (LAST MIDDLEWARE)
-app.use((err, req, res, next) => {
-    console.error("[Global Error Logger]:", err.message || err);
-
-    const statusCode = err.statusCode || 500;
-    const message = err.message || "Internal server error during database operation";
-
-    return res.status(statusCode).json({
-        success: false,
-        error: message
-    });
-});
+// ERROR USE
+app.use(errorHandler);
 
 // SERVER LISTEN (ABSOLUTE BOTTOM)
 app.listen(port, () => {
