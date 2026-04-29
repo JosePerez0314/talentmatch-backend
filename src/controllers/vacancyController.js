@@ -13,14 +13,6 @@ const vacanciesSelectObject = {
     status: true
 }
 
-const buildVacanciesData = (payload) => {
-    return {
-        title: payload.title,
-        openDate: new Date(payload.openDate),
-        closeDate: new Date(payload.closeDate)
-    }
-}
-
 export const getAllVacancies = async (req, res, next) => {
     const allVacancies = await prisma.vacancy.findMany({
         where: {
@@ -38,43 +30,12 @@ export const getAllVacancies = async (req, res, next) => {
 }
 
 export const sendVacancies = async (req, res, next) => {
-    const payload = req.body;
 
-    if (!payload || Object.keys(payload).length === 0) {
-        return res.status(400).json({
-            success: false,
-            error: "No data provided in the request body"
-        });
-    }
-
-    if (!payload.title || !payload.positionId || !payload.openDate || !payload.closeDate) {
-        return res.status(400).json({
-            success: false,
-            error: "Missing required fields: 'title', 'openDate', 'closeDate', 'positionId' are mandatory."
-        });
-    }
-
-    const openDate = new Date(payload.openDate);
-    const closeDate = new Date(payload.closeDate);
-
-    if (isNaN(openDate.getTime()) || isNaN(closeDate.getTime())) {
-        return res.status(400).json({
-            success: false,
-            error: "Invalid date format"
-        });
-    }
-
-    if (openDate >= closeDate) {
-        return res.status(400).json({
-            success: false,
-            error: "openDate must be before closeDate"
-        });
-    }
-
+    const { title, openDate, closeDate, positionId } = req.validated.body;
 
     const positionExists = await prisma.position.findFirst({
         where: {
-            id: payload.positionId,
+            id: positionId,
             userId: req.user.id
         }
     });
@@ -87,61 +48,62 @@ export const sendVacancies = async (req, res, next) => {
 
     const newVacancy = await prisma.vacancy.create({
         data: {
-            title: payload.title,
+            title,
             openDate,
             closeDate,
             userId: req.user.id,
-            positionId: payload.positionId
+            positionId
         },
         include: {
             position: true
         }
     });
 
-    const candidates = await prisma.candidate.findMany({
-        where: { userId: req.user.id }
-    });
-
     await matchAllCandidatesToVacancy(prisma, newVacancy, req.user.id);
 
     console.log("Database write sucessful:", newVacancy.id);
+
     return res.status(201).json({
         success: true,
         data: newVacancy
     });
 }
 
-export const vacancyParam = async (req, res, next, id) => {
-    const idSearch = parseInt(id);
-
-    if (isNaN(idSearch)) return res.status(400).json({
-        success: false,
-        error: "Vacancies IDs only accept numeric values"
-    });
-
-    req.idSearch = idSearch;
-    next();
-}
-
 export const getOneVacancy = async (req, res, next) => {
+    const { id } = req.validated.params;
+
     const vacancy = await prisma.vacancy.findFirst({
         where: {
-            id: req.idSearch,
-            position: {
-                userId: req.user.id
-            }
+            id,
+            userId: req.user.id
         },
-        select: { ...vacanciesSelectObject }
+        select: {
+            ...vacanciesSelectObject,
+            updatedAt: true,
+            positionId: true
+        }
     });
 
-    return sendResponseOr404(res, vacancy, "Vacancy");
-}
+    if (!vacancy) {
+        return res.status(404).json({
+            success: false,
+            message: "Vacancy not found or unauthorized"
+        });
+    }
+
+    return res.status(200).json({
+        success: true,
+        data: vacancy
+    });
+};
 
 export const getVacancyResults = async (req, res, next) => {
 
+    const { id } = req.validated.params;
+
     const allMatchResults = await prisma.matchResult.findMany({
         where: {
-            vacancyId: req.idSearch,
+            vacancyId: id,
             vacancy: {
                 userId: req.user.id
             }
@@ -177,88 +139,81 @@ export const getVacancyResults = async (req, res, next) => {
     return sendResponseOr404(res, allMatchResults, 'Match Results');
 }
 
-export const sendVacancyResults = async (req, res, next) => {
-    matchResult(req, res, next);
-}
-
 export const changeStatus = async (req, res, next) => {
-    const { status } = req.body;
+    const { id } = req.validated.params;
+    const { status } = req.validated.body;
 
-    const validStatus = ['OPEN', 'CONTACTING', 'FILLED'];
-    if (!status || !validStatus.includes(status)) {
-        return res.status(400).json({
+    const vacancy = await prisma.vacancy.findFirst({
+        where: {
+            id,
+            userId: req.user.id
+        }
+    });
+
+    if (!vacancy) {
+        return res.status(404).json({
             success: false,
-            error: "Invalid or missing status. Must be OPEN, CONTACTING, or FILLED"
+            message: "Vacancy not found or unauthorized"
         });
     }
 
-    const updateVacancy = await prisma.vacancy.update({
-        where: {
-            id: req.idSearch,
-            position: {
-                userId: req.user.id
-            }
-        },
-        data: { status: status }
+    const updated = await prisma.vacancy.update({
+        where: { id },
+        data: { status }
     });
 
-    return sendResponseOr404(res, updateVacancy, "Vacancy Status");
-}
+    return sendResponseOr404(res, updated, "Vacancy Status");
+};
 
 export const updateVacancy = async (req, res, next) => {
-    const payload = req.body;
+    const { id } = req.validated.params;
+    const data = req.validated.body;
 
-    const vacancyExists = await prisma.vacancy.findFirst({
+    const vacancy = await prisma.vacancy.findFirst({
         where: {
-            id: req.idSearch,
-            position: {
-                userId: req.user.id
-            }
+            id,
+            userId: req.user.id
         }
     });
 
-    if (!vacancyExists) {
+    if (!vacancy) {
         return res.status(404).json({
             success: false,
             message: "Vacancy not found or unauthorized"
         });
     }
 
-    const vacancy = await prisma.vacancy.update({
-        where: {
-            id: req.idSearch,
-        },
-        data: {
-            ...buildVacanciesData(payload)
-        }
+    const updated = await prisma.vacancy.update({
+        where: { id },
+        data
     });
 
-    return sendResponseOr404(res, vacancy, "Vacancy");
-}
+    return sendResponseOr404(res, updated, "Vacancy");
+};
 
 export const deleteVacancy = async (req, res, next) => {
+    const { id } = req.validated.params;
 
-    const vacancyExists = await prisma.vacancy.findFirst({
+    const vacancy = await prisma.vacancy.findFirst({
         where: {
-            id: req.idSearch,
-            position: {
-                userId: req.user.id
-            }
+            id,
+            userId: req.user.id
         }
     });
 
-    if (!vacancyExists) {
+    if (!vacancy) {
         return res.status(404).json({
             success: false,
             message: "Vacancy not found or unauthorized"
         });
     }
 
-    const vacancy = await prisma.vacancy.delete({
-        where: {
-            id: req.idSearch,
-        }
-    })
+    await prisma.vacancy.delete({
+        where: { id }
+    });
 
-    return sendResponseOr404(res, vacancy, "Vacancy");
-}
+    return res.status(200).json({
+        success: true,
+        message: "Vacancy deleted successfully"
+    });
+};
