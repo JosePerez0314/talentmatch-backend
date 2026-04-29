@@ -59,16 +59,9 @@ export const getAllUsers = async (req, res, next) => {
 
 export const updateUserRole = async (req, res, next) => {
     const { role } = req.body;
-    const targetUserId = parseInt(req.params.id);
+    const { id } = req.params;
 
-    if (!["ADMIN", "USER"].includes(role)) {
-        return res.status(400).json({
-            success: false,
-            error: "Invalid role"
-        });
-    }
-
-    if (req.user.id === targetUserId) {
+    if (req.user.id === id) {
         return res.status(403).json({
             success: false,
             error: "You cannot modify your own role"
@@ -76,12 +69,8 @@ export const updateUserRole = async (req, res, next) => {
     }
 
     const user = await prisma.user.update({
-        where: {
-            id: targetUserId
-        },
-        data: {
-            role
-        },
+        where: { id },
+        data: { role },
         select: {
             id: true,
             email: true,
@@ -94,10 +83,10 @@ export const updateUserRole = async (req, res, next) => {
 };
 
 export const deleteUser = async (req, res, next) => {
+    const { id } = req.params;
+
     const user = await prisma.user.delete({
-        where: {
-            id: parseInt(req.params.id)
-        },
+        where: { id },
     });
 
     return sendResponseOr404(res, user, "User");

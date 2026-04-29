@@ -1,5 +1,5 @@
 import express from "express";
-import upload from '../middlewares/multerConfig.js';
+import upload from '../middlewares/upload/multerConfig.js';
 import { catchAsync } from "../lib/catchAsync.js";
 import { processResumes } from "../controllers/uploadController.js";
 
