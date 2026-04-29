@@ -1,7 +1,6 @@
 import "dotenv/config";
-
 import express from 'express';
-import cors from 'cors';
+
 import users from "./routes/users.js";
 import positions from "./routes/positions.js";
 import uploads from "./routes/uploads.js";
@@ -9,37 +8,38 @@ import vacancies from "./routes/vacancies.js";
 import candidates from "./routes/candidates.js";
 import dashboard from "./routes/dashboard.js";
 import admin from "./routes/admin.js";
-import { authMiddleware } from './middlewares/auth/authMiddleware.js';
+
+// SECURITY MIDDLEWARES
+import corsMiddleware from "./middlewares/security/corsMiddleware.js";
+import helmetMiddleware from "./middlewares/security/helmetMiddleware.js";
+import rateLimitMiddleware from "./middlewares/security/rateLimitMiddleware.js";
+
+// AUTH
+import authMiddleware from "./middlewares/auth/authMiddleware.js";
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-// 1. SECURITY & CONFIGURATION (FIRST)
-app.use(cors({
-    origin: [
-        'http://localhost:5173',
-        'https://talentsmatchai.netlify.app'
-    ],
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    credentials: true
-}));
+// SECURITY LAYER
+app.use(corsMiddleware);
+app.use(helmetMiddleware);
+app.use(rateLimitMiddleware);
 
-// 2. PARSERS
+// BODY PARSER
 app.use(express.json());
 
-app.use("/api/users/", users);
+// LOGIN
+app.use("/api/users", users);
 
-// Auth
+// AUTH USE
 app.use(authMiddleware);
 
-// ADMIN ROUTE
-app.use("/api/admin", admin);
-
 // ROUTES
-app.use("/api/positions/", positions);
-app.use("/api/uploads/", uploads);
-app.use("/api/vacancies/", vacancies);
-app.use("/api/candidates/", candidates);
+app.use("/api/admin", admin); // ADMIN ROUTE
+app.use("/api/positions", positions);
+app.use("/api/uploads", uploads);
+app.use("/api/vacancies", vacancies);
+app.use("/api/candidates", candidates);
 app.use("/api/dashboard", dashboard);
 
 // ERROR LOGGING (LAST MIDDLEWARE)
@@ -57,5 +57,5 @@ app.use((err, req, res, next) => {
 
 // SERVER LISTEN (ABSOLUTE BOTTOM)
 app.listen(port, () => {
-    console.log(`The server is running on http://localhost:${port}/api/users`);
+    console.log(`Server running on http://localhost:${port}`);
 });
