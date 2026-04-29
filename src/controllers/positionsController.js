@@ -43,28 +43,7 @@ export const getPositions = async (req, res, next) => {
 }
 
 export const sendPositions = async (req, res, next) => {
-    const payload = req.body; // JSON container applied in index.js
-
-    // Check if the payload exists and is not empty
-    if (!payload || Object.keys(payload).length === 0) {
-        return res.status(400).json({
-            success: false,
-            error: "No data provided in the request body"
-        });
-    }
-
-    if (!payload.role) {
-        return res.status(400).json({
-            success: false,
-            error: "Missing required fields: role"
-        });
-    }
-
-    const data = buildPositionData(payload);
-
-    Object.keys(data).forEach(key => {
-        if (data[key] === undefined) delete data[key];
-    });
+    const data = req.validated.body;
 
     const newPosition = await prisma.position.create({
         data: {
@@ -74,38 +53,20 @@ export const sendPositions = async (req, res, next) => {
     });
 
     console.log("Database write successful:", newPosition.role);
+
     return res.status(201).json({
         succes: true,
         data: newPosition
     });
 }
 
-export const positionsParam = async (req, res, next, id) => {
-    const idSearch = parseInt(id);
-
-    if (!Number.isInteger(idSearch)) {
-        return res.status(400).json({
-            succes: false,
-            error: "Position ID must be a valid integer"
-        });
-    }
-
-    if (isNaN(idSearch)) {
-        return res.status(400).json({
-            succes: false,
-            error: "Position IDs only accept numeric values"
-        });
-    }
-
-    req.idSearch = idSearch;
-    next();
-}
-
 export const getOnePosition = async (req, res, next) => {
+    const { id } = req.validated.params;
+
     const position = await prisma.position.findFirst({
         where: {
+            id,
             userId: req.user.id,
-            id: req.idSearch
         },
         select: {
             ...positionSelectObject
@@ -116,59 +77,56 @@ export const getOnePosition = async (req, res, next) => {
 }
 
 export const updatePosition = async (req, res, next) => {
-    const payload = req.body;
+    const { id } = req.validated.params;
+    const data = req.validated.body;
 
-    const positionExists = await prisma.position.findFirst({
+    const position = await prisma.position.findFirst({
         where: {
-            userId: req.user.id,
-            id: req.idSearch
+            id,
+            userId: req.user.id
         }
     });
 
-    if (!positionExists) {
+    if (!position) {
         return res.status(404).json({
             success: false,
             message: "Position not found or unauthorized"
         });
     }
 
-    const data = buildPositionData(payload);
-
-    Object.keys(data).forEach(key => {
-        if (data[key] === undefined) delete data[key];
+    const updated = await prisma.position.update({
+        where: { id },
+        data
     });
 
-    const position = await prisma.position.update({
-        where: {
-            id: req.idSearch
-        },
-        data: {
-            data
-        }
-    });
-
-    return sendResponseOr404(res, position, "Position");
-}
+    return sendResponseOr404(res, updated, "Position");
+};
 
 export const deletePosition = async (req, res, next) => {
-    const positionExists = await prisma.position.findFirst({
+    const { id } = req.validated.params;
+
+    const position = await prisma.position.findFirst({
         where: {
+            id,
             userId: req.user.id,
-            id: req.idSearch
         }
     });
 
-    if (!positionExists) {
+    if (!position) {
         return res.status(404).json({
             success: false,
             message: "Position not found or unauthorized"
         });
     }
-    const position = await prisma.position.delete({
+
+    await prisma.position.delete({
         where: {
-            id: req.idSearch
+            id
         }
     });
 
-    return sendResponseOr404(res, position, "Position");
+    return res.status(200).json({
+        success: true,
+        message: "Position deleted successfully"
+    });
 }
