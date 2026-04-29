@@ -2,7 +2,7 @@ import pdfWrapper from "../lib/pdfWrapper.cjs";
 import { saveCandidateToDatabase } from "../services/candidateService.js";
 import { uploadPdfToCloudinary } from "../services/cloudinaryService.js";
 import { extractCandidateData } from "../prompts/extractCvPrompt.js"
-import { matchAllCandidatesToVacancy } from "../services/matchingService.js";
+import { matchAllCandidatesToVacancy, matchCandidateToAllVacancies } from "../services/matchingService.js";
 import prisma from "../lib/prisma.js";
 import { processCandidateCv } from "../services/cvProcessingService.js";
 

@@ -51,3 +51,41 @@ export const matchAllCandidatesToVacancy = async (prisma, vacancy, userId) => {
 
     console.timeEnd("matching");
 };
+
+export const matchCandidateToAllVacancies = async (prisma, userId, candidate) => {
+
+    const vacancies = await prisma.vacancy.findMany({
+        where: { userId },
+        include: { position: true }
+    });
+
+    if (!vacancies.length) return;
+
+    const limit = pLimit(5);
+
+    const results = await Promise.all(
+        vacancies.map(vacancy =>
+            limit(async () => {
+                try {
+                    return await computeMatch(vacancy, candidate);
+                } catch (error) {
+                    console.error(
+                        `Match failed (vacancy ${vacancy.id}, candidate ${candidate.id})`,
+                        error.message
+                    );
+                    return null;
+                }
+            })
+        )
+    );
+
+    const validResults = results.filter(Boolean);
+
+    await Promise.all(
+        validResults.map(result =>
+            limit(() =>
+                upsertMatchResult(prisma, result, userId)
+            )
+        )
+    );
+};

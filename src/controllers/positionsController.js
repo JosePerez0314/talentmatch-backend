@@ -13,19 +13,6 @@ const positionSelectObject = {
     createdAt: true
 }
 
-const buildPositionData = (payload) => {
-    return {
-        role: payload.role,
-        yearsOfExperience: payload.yearsOfExperience,
-        technicalSkills: payload.technicalSkills,
-        optionalTechnicalSkills: payload.optionalTechnicalSkills,
-        softSkills: payload.softSkills,
-        description: payload.description,
-        education: payload.education,
-        languages: payload.languages,
-    };
-}
-
 export const getPositions = async (req, res, next) => {
     const allPositions = await prisma.position.findMany({
         where: {
