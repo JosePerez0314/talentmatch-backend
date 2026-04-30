@@ -52,40 +52,42 @@ export const matchAllCandidatesToVacancy = async (prisma, vacancy, userId) => {
     console.timeEnd("matching");
 };
 
-export const matchCandidateToAllVacancies = async (prisma, userId, candidate) => {
+export const matchCandidateToVacancies = async (prisma, candidate, userId) => {
+    console.time("candidate-matching");
 
     const vacancies = await prisma.vacancy.findMany({
         where: { userId },
         include: { position: true }
     });
 
-    if (!vacancies.length) return;
+    console.log("Vacancies", vacancies)
+    console.log("Candidates", candidate)
 
-    const limit = pLimit(5);
+
+    if (!vacancies.length) {
+        console.timeEnd("candidate-matching");
+        return;
+    }
 
     const results = await Promise.all(
-        vacancies.map(vacancy =>
-            limit(async () => {
-                try {
-                    return await computeMatch(vacancy, candidate);
-                } catch (error) {
-                    console.error(
-                        `Match failed (vacancy ${vacancy.id}, candidate ${candidate.id})`,
-                        error.message
-                    );
-                    return null;
-                }
-            })
-        )
+        vacancies.map(async (vacancy) => {
+            try {
+                return await computeMatch(vacancy, candidate);
+            } catch (err) {
+                console.error(
+                    `Match failed (candidate ${candidate.id}, vacancy ${vacancy.id})`,
+                    err.message
+                );
+                return null;
+            }
+        })
     );
 
-    const validResults = results.filter(Boolean);
+    const valid = results.filter(Boolean);
 
     await Promise.all(
-        validResults.map(result =>
-            limit(() =>
-                upsertMatchResult(prisma, result, userId)
-            )
-        )
+        valid.map(r => upsertMatchResult(prisma, r, userId))
     );
+
+    console.timeEnd("candidate-matching");
 };

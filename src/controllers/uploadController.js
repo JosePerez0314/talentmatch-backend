@@ -2,7 +2,7 @@ import pdfWrapper from "../lib/pdfWrapper.cjs";
 import { saveCandidateToDatabase } from "../services/candidateService.js";
 import { uploadPdfToCloudinary } from "../services/cloudinaryService.js";
 import { extractCandidateData } from "../prompts/extractCvPrompt.js"
-import { matchCandidateToAllVacancies } from "../services/matchingService.js";
+import { matchCandidateToVacancies } from "../services/matchingService.js";
 import prisma from "../lib/prisma.js";
 import { processCandidateCv } from "../services/cvProcessingService.js";
 
@@ -49,7 +49,7 @@ export const processResumes = async (req, res) => {
 
             processedCandidates.push(candidate);
 
-            await matchCandidateToAllVacancies(prisma, userId, candidate);
+            await matchCandidateToVacancies(prisma, candidate, userId);
 
         } catch (error) {
             console.error(`Failed to process ${pdfFile.originalname}`, error.message);
