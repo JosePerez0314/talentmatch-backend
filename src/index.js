@@ -16,6 +16,7 @@ import rateLimitMiddleware from "./middlewares/security/rateLimitMiddleware.js";
 
 // ERRORS MIDDLWARES
 import { errorHandler } from "./middlewares/error/errorHandler.js";
+import { notFoundMiddleware } from "./middlewares/error/notFoundMiddleware.js";
 
 // AUTH
 import authMiddleware from "./middlewares/auth/authMiddleware.js";
@@ -44,6 +45,9 @@ app.use("/api/uploads", uploads);
 app.use("/api/vacancies", vacancies);
 app.use("/api/candidates", candidates);
 app.use("/api/dashboard", dashboard);
+
+// 404 handler
+app.use(notFoundMiddleware);
 
 // ERROR USE
 app.use(errorHandler);
