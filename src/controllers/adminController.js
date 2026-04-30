@@ -58,8 +58,8 @@ export const getAllUsers = async (req, res, next) => {
 }
 
 export const updateUserRole = async (req, res, next) => {
-    const { role } = req.body;
-    const { id } = req.params;
+    const { role } = req.validated.body;
+    const { id } = req.validated.params;
 
     if (req.user.id === id) {
         return res.status(403).json({
@@ -83,7 +83,7 @@ export const updateUserRole = async (req, res, next) => {
 };
 
 export const deleteUser = async (req, res, next) => {
-    const { id } = req.params;
+    const { id } = req.validated.params;
 
     const user = await prisma.user.delete({
         where: { id },

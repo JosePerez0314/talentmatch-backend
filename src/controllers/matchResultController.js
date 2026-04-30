@@ -1,3 +1,6 @@
+// ⚠️ DEV-ONLY: Match preview / debugging endpoint
+// Not used in production flow (MVP uses batch matching)
+
 import prisma from "../lib/prisma.js";
 import { computeMatch } from "../services/computeMatchService.js";
 

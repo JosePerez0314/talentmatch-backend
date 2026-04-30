@@ -2,32 +2,21 @@ import express from "express";
 import prisma from "../lib/prisma.js";
 import { sendResponseOr404 } from "../lib/responseHandler.js";
 import { catchAsync } from "../lib/catchAsync.js";
-import { deletePosition, getOnePosition, getPositions, positionsParam, sendPositions, updatePosition } from "../controllers/positionsController.js";
+import { deletePosition, getOnePosition, getPositions, sendPositions, updatePosition } from "../controllers/positionsController.js";
+import { validate } from "../middlewares/validation/validateMiddleware.js"
+import { deletePositionSchema, getOnePositionSchema, sendPositionSchema, updatePositionSchema } from "../validations/positionValidation.js";
 
 const router = express.Router();
 
-router.get('/', catchAsync(async (req, res, next) => {
-    getPositions(req, res, next);
-}));
+router.get('/', catchAsync(getPositions));
 
-router.post('/', catchAsync(async (req, res, next) => {
-    sendPositions(req, res, next);
-}));
+router.post('/', validate(sendPositionSchema), catchAsync(sendPositions));
 
-router.param('id', (req, res, next, id) => {
-    positionsParam(req, res, next, id);
-});
+router.get('/:id', validate(getOnePositionSchema), catchAsync(getOnePosition));
 
-router.get('/:id', catchAsync(async (req, res, next) => {
-    getOnePosition(req, res, next);
-}));
+router.put('/:id', validate(updatePositionSchema), catchAsync(updatePosition));
 
-router.put('/:id', catchAsync(async (req, res, next) => {
-    updatePosition(req, res, next);
-}));
+router.delete('/:id', validate(deletePositionSchema), catchAsync(deletePosition));
 
-router.delete('/:id', catchAsync(async (req, res, next) => {
-    deletePosition(req, res, next);
-}));
 
 export default router;
