@@ -20,6 +20,7 @@ import { notFoundMiddleware } from "./middlewares/error/notFoundMiddleware.js";
 
 // AUTH
 import authMiddleware from "./middlewares/auth/authMiddleware.js";
+import { identifyUserDemo } from "./middlewares/auth/demoTrialMiddleware.js";
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -37,6 +38,7 @@ app.use("/api/users", users);
 
 // AUTH USE
 app.use(authMiddleware);
+app.use(identifyUserDemo);
 
 // ROUTES
 app.use("/api/admin", admin); // ADMIN ROUTE
