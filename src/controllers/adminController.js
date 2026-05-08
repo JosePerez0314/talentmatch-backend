@@ -42,7 +42,9 @@ export const getAllUsers = async (req, res, next) => {
             select: {
                 id: true,
                 email: true,
-                role: true
+                role: true,
+                createdAt: true,
+                updatedAt: true
             }
         });
 
