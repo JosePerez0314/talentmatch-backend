@@ -30,6 +30,13 @@ export const processResumes = async (req, res) => {
                 userId
             );
 
+            if (candidate.fullName === "" && candidate.email === "no-email@talentmatch.com" && candidate.role === "") {
+                return res.status(400).json({
+                    success: false,
+                    error: `AI failed to extract meaningful data from the CV. Please ensure the CV is in a standard format and contains clear information. ${pdfFile.originalname} may not be processed correctly.`,
+                });
+            }
+
             if (!candidate?.fullName) {
                 throw new Error("Invalid AI candidate structure");
             }
