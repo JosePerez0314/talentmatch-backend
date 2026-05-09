@@ -30,6 +30,11 @@ export const processResumes = async (req, res) => {
                 userId
             );
 
+            if (candidate.fullName === "" && candidate.email === "no-email@talentmatch.com" && candidate.role === "") {
+                throw new Error("Invalid candidate data");
+                return res.status(400).json({ error: "AI extraction failed for " + pdfFile.originalname });
+            }
+
             if (!candidate?.fullName) {
                 throw new Error("Invalid AI candidate structure");
             }
