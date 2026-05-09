@@ -31,8 +31,10 @@ export const processResumes = async (req, res) => {
             );
 
             if (candidate.fullName === "" && candidate.email === "no-email@talentmatch.com" && candidate.role === "") {
-                throw new Error("Invalid candidate data");
-                return res.status(400).json({ error: "AI extraction failed for " + pdfFile.originalname });
+                return res.status(400).json({
+                    success: false,
+                    error: `AI failed to extract meaningful data from the CV. Please ensure the CV is in a standard format and contains clear information. ${pdfFile.originalname} may not be processed correctly.`,
+                });
             }
 
             if (!candidate?.fullName) {
