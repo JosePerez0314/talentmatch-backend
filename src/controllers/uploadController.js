@@ -1,4 +1,4 @@
-import pdfWrapper from "../lib/pdfWrapper.cjs";
+import pdfWrapper from "../lib/pdfWrapper.js";
 import { saveCandidateToDatabase } from "../services/candidateService.js";
 import { uploadPdfToCloudinary } from "../services/cloudinaryService.js";
 import { extractCandidateData } from "../prompts/extractCvPrompt.js"
