@@ -1,6 +1,6 @@
 import express from "express";
 import upload from '../middlewares/upload/multerConfig.js';
-import { catchAsync } from "../lib/catchAsync.js";
+import { catchAsync } from "../lib/catchAsync.ts";
 import { processResumes } from "../controllers/uploadController.js";
 import { validate } from "../middlewares/validation/validateMiddleware.js";
 import { processResumesSchema } from "../validations/uploadValidation.js";

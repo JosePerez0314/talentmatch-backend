@@ -1,8 +1,13 @@
 import { Response } from "express";
 
-export const sendResponseOr404 = (
+type apiResponse<T> = {
+  success: boolean;
+  data: T;
+};
+
+export const sendResponseOr404 = <T>(
   res: Response,
-  data: unknown,
+  data: T | null,
   entityName: string = "Record",
 ) => {
   if (!data) {
@@ -12,8 +17,10 @@ export const sendResponseOr404 = (
     });
   }
 
-  return res.status(200).json({
+  const response: apiResponse<T> = {
     success: true,
     data: data,
-  });
+  };
+
+  return res.status(200).json({ response });
 };

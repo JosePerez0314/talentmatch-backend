@@ -1,4 +1,4 @@
-import pdfWrapper from "../lib/pdfWrapper.js";
+import { extract } from "../lib/pdfWrapper.ts";
 import { saveCandidateToDatabase } from "../services/candidateService.js";
 import { uploadPdfToCloudinary } from "../services/cloudinaryService.js";
 import { extractCandidateData } from "../prompts/extractCvPrompt.js"
@@ -14,12 +14,14 @@ export const processResumes = async (req, res) => {
         return res.status(400).json({ error: "No PDFs uploaded" });
     }
 
+    console.log(`files exists ${pdfFiles.length}`)
+
     const processedCandidates = [];
 
     for (const pdfFile of pdfFiles) {
         try {
-            const data = await pdfWrapper.extract(pdfFile.buffer);
-            const extractedText = data.text;
+            const extractedText = await extract(pdfFile.buffer);
+            console.log(`Extracted text from ${pdfFile.originalname}:`, extractedText.substring(0, 200)); // Log the first 200 characters
 
             if (extractedText.trim().length < 500) {
                 throw new Error("Insufficient text in PDF");

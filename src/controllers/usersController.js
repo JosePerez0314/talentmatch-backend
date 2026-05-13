@@ -2,7 +2,7 @@ import jwt from "jsonwebtoken";
 
 import prisma from "../lib/prisma.js";
 import bcrypt from "bcrypt";
-import { sendResponseOr404 } from "../lib/responseHandler.js";
+import { sendResponseOr404 } from "../lib/responseHandler.ts";
 
 export const createUser = async (req, res, next) => {
     try {
