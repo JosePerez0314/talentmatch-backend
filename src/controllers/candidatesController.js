@@ -1,5 +1,5 @@
 import prisma from "../lib/prisma.js";
-import { sendResponseOr404 } from "../lib/responseHandler.js";
+import { sendResponseOr404 } from "../lib/responseHandler.ts";
 
 export const getCandidates = async (req, res, next) => {
     const allCandidates = await prisma.candidate.findMany({

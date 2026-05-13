@@ -1,5 +1,5 @@
 import express from "express";
-import { catchAsync } from "../lib/catchAsync.js";
+import { catchAsync } from "../lib/catchAsync.ts";
 import { createUser, loginUser } from "../controllers/usersController.js";
 import { validate } from "../middlewares/validation/validateMiddleware.js"
 import { createUserSchema, loginSchema } from "../validations/userValidation.js";

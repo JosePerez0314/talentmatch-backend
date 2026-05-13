@@ -1,5 +1,5 @@
 import "dotenv/config";
-import express from 'express';
+import express from "express";
 
 import users from "./routes/users.js";
 import positions from "./routes/positions.js";
@@ -54,5 +54,5 @@ app.use(errorHandler);
 
 // SERVER LISTEN (ABSOLUTE BOTTOM)
 app.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}`);
+  console.log(`Server running on http://localhost:${port}`);
 });
