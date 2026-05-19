@@ -7,15 +7,6 @@ interface Weights {
   SOFT_SKILLS: number;
 }
 
-interface EducationLevels {
-  none: number;
-  "high school": number;
-  associate: number;
-  bachelor: number;
-  master: number;
-  phd: number;
-}
-
 interface Candidate {
   technicalSkills: string[];
   yearsOfExperience: number;
@@ -44,15 +35,6 @@ const WEIGHTS: Weights = {
   LANGUAGES: 0.15,
   EDUCATION: 0.1,
   SOFT_SKILLS: 0.1,
-};
-
-const EDUCATION_LEVELS: EducationLevels = {
-  none: 0,
-  "high school": 1,
-  associate: 2,
-  bachelor: 3,
-  master: 4,
-  phd: 5,
 };
 
 type calculatorInput<T> = {
@@ -92,9 +74,8 @@ export const calculateMatchScore = (
   if (normalizedCandidate.yearsOfExperience >= position.yearsOfExperience) {
     expScore = WEIGHTS.EXPERIENCE * 100;
   } else {
-    const highlights =
-      normalizedCandidate.aiAnalysis?.projectHighlights ||
-      normalizedCandidate.rawApiPayload?.aiAnalysis?.projectHighlights;
+    const highlights: string[] =
+      normalizedCandidate.aiAnalysis?.projectHighlights || [];
 
     if (highlights && highlights.length > 0) {
       expScore = WEIGHTS.EXPERIENCE * 50;
@@ -111,7 +92,7 @@ export const calculateMatchScore = (
   breakdown.experience = { score: expScore };
 
   // Role
-  const roleScore =
+  const roleScore: number =
     normalizedCandidate.role.toLowerCase() === position.role.toLowerCase()
       ? WEIGHTS.ROLE * 100
       : 0;
@@ -119,14 +100,14 @@ export const calculateMatchScore = (
   breakdown.role = { score: roleScore };
 
   // Languages
-  const candidateLanLower = normalizedCandidate.languages.map((l) =>
+  const candidateLanLower: string[] = normalizedCandidate.languages.map((l) =>
     l.toLowerCase(),
   );
 
-  const matchedLan = position.languages.filter((language) =>
+  const matchedLan: string[] = position.languages.filter((language) =>
     candidateLanLower.includes(language.toLowerCase()),
   );
-  const lanScore =
+  const lanScore: number =
     position.languages.length > 0
       ? (matchedLan.length / position.languages.length) *
         (WEIGHTS.LANGUAGES * 100)
@@ -135,14 +116,22 @@ export const calculateMatchScore = (
   breakdown.languages = { score: lanScore, matched: matchedLan };
 
   // Education
-  const candidateLevel =
-    EDUCATION_LEVELS[normalizedCandidate.education.toLowerCase()] || 0;
-  const positionLevel = EDUCATION_LEVELS[position.education.toLowerCase()] || 0;
 
-  const eduScore =
-    candidateLevel >= positionLevel ? WEIGHTS.EDUCATION * 100 : 0;
-  finalScore += eduScore;
-  breakdown.education = { score: eduScore, candidateLevel, positionLevel };
+  let educationScore: number = 0;
+  const candidateEducation = normalizedCandidate.education.toLowerCase();
+  const positionEducation =
+    position.education.length > 0 ? position.education.toLowerCase() : "";
+
+  if (positionEducation === "") {
+    educationScore = WEIGHTS.EDUCATION * 100;
+  } else if (candidateEducation === positionEducation) {
+    educationScore = WEIGHTS.EDUCATION * 100;
+  } else {
+    educationScore = 0;
+  }
+
+  finalScore += educationScore;
+  breakdown.education = { score: educationScore };
 
   // Soft Skills
   const candidateSoftLower = normalizedCandidate.softSkills.map((sf) =>
