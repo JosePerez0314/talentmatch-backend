@@ -1,0 +1,17 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: talentmatch_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: talentmatch_dev
+      MYSQL_USER: talentmatch
+      MYSQL_PASSWORD: talentmatch123
+    ports:
+      - "3307:3306"
+    volumes:
+      - talentmatch_mysql_data:/var/lib/mysql
+
+volumes:
+  talentmatch_mysql_data:
