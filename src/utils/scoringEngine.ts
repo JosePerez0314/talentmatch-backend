@@ -13,7 +13,7 @@ interface Candidate {
   role: string;
   languages: string[];
   education: string;
-  softskills: string[];
+  softSkills: string[];
   aiAnalysis?: {
     projectHighlights?: string[];
   };
@@ -24,8 +24,17 @@ interface Position {
   yearsOfExperience: number;
   role: string;
   languages: string[];
+  educationLevel: string;
   education: string;
-  softskills: string[];
+  softSkills: string[];
+}
+
+interface EducationsLevels {
+  none: number;
+  high_school: number;
+  university: number;
+  masters: number;
+  doctorate: number;
 }
 
 const WEIGHTS: Weights = {
@@ -37,20 +46,28 @@ const WEIGHTS: Weights = {
   SOFT_SKILLS: 0.1,
 };
 
-type calculatorInput<T> = {
-  position: T;
-  normalizedCandidate: T;
+const EDUCATION_LEVELS: EducationsLevels = {
+  none: 0,
+  high_school: 1,
+  university: 2,
+  masters: 3,
+  doctorate: 4,
 };
+
+interface MatchScoreResult {
+  totalScore: number;
+  breakdown: Record<string, { score: number; matched?: unknown[] }>;
+}
 
 export const calculateMatchScore = (
   position: Position,
   normalizedCandidate: Candidate,
-) => {
+): MatchScoreResult => {
   let finalScore: number = 0;
   const breakdown: Record<string, { score: number; matched?: unknown[] }> = {};
 
   // Inputs values validation
-  if (!position || !normalizedCandidate) return null;
+  if (!position || !normalizedCandidate) return { totalScore: 0, breakdown };
 
   // Technical skills
   const candidateTechSkillsLower: string[] =
@@ -118,27 +135,35 @@ export const calculateMatchScore = (
   // Education
 
   let educationScore: number = 0;
-  const candidateEducation = normalizedCandidate.education.toLowerCase();
-  const positionEducation =
-    position.education.length > 0 ? position.education.toLowerCase() : "";
 
-  if (positionEducation === "") {
-    educationScore = WEIGHTS.EDUCATION * 100;
-  } else if (candidateEducation === positionEducation) {
-    educationScore = WEIGHTS.EDUCATION * 100;
-  } else {
-    educationScore = 0;
-  }
+  const getEducationLevel = (education: string): number => {
+    for (const [key, value] of Object.entries(EDUCATION_LEVELS)) {
+      if (education.toLocaleLowerCase().includes(key)) return value;
+    }
+    return 0;
+  };
+
+  const positionEduLevel: number = getEducationLevel(
+    position.educationLevel.toLowerCase() ?? 0,
+  );
+  const candidateEduLevel: number = getEducationLevel(
+    normalizedCandidate.education,
+  );
+
+  educationScore =
+    positionEduLevel === 0 || candidateEduLevel >= positionEduLevel
+      ? WEIGHTS.EDUCATION * 100
+      : 0;
 
   finalScore += educationScore;
   breakdown.education = { score: educationScore };
 
   // Soft Skills
-  const candidateSoftLower = normalizedCandidate.softSkills.map((sf) =>
-    sf.toLowerCase(),
+  const candidateSoftLower: string[] = normalizedCandidate.softSkills.map(
+    (sf) => sf.toLowerCase(),
   );
 
-  const matchedSoft = position.softSkills.filter((softSkill) =>
+  const matchedSoft: string[] = position.softSkills.filter((softSkill) =>
     candidateSoftLower.includes(softSkill.toLowerCase()),
   );
   const softScore =
