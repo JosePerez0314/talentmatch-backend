@@ -56,6 +56,7 @@ model Department {
   positions Position[]
 
   @@index([userId])
+  @@unique([title, userId])
 }
 
 /// Defines the job requirements baseline used by the AI to evaluate candidates.
