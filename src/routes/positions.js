@@ -1,7 +1,7 @@
 import express from "express";
 import prisma from "../lib/prisma.js";
 import { catchAsync } from "../lib/catchAsync.ts";
-import { deletePosition, getOnePosition, getPositions, sendPositions, updatePosition } from "../controllers/positionsController.js";
+import { deletePosition, getOnePosition, getPositions, sendPositions, updatePosition } from "../controllers/positions.controller.js";
 import { validate } from "../middlewares/validation/validate.middleware.js"
 import { deletePositionSchema, getOnePositionSchema, sendPositionSchema, updatePositionSchema } from "../validations/positionValidation.js";
 
