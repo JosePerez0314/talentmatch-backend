@@ -1,7 +1,7 @@
 import express from "express";
 import { catchAsync } from "../lib/catchAsync.ts";
 import { createUser, loginUser } from "../controllers/usersController.js";
-import { validate } from "../middlewares/validation/validateMiddleware.js"
+import { validate } from "../middlewares/validation/validate.middleware.js"
 import { createUserSchema, loginSchema } from "../validations/userValidation.js";
 import { identifyUserDemo } from "../middlewares/auth/demoTrialMiddleware.js";
 

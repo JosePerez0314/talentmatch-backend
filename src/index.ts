@@ -19,7 +19,7 @@ import { errorHandler } from "./middlewares/error/errorHandler.js";
 import { notFoundMiddleware } from "./middlewares/error/notFoundMiddleware.js";
 
 // AUTH
-import authMiddleware from "./middlewares/auth/authMiddleware.js";
+import authMiddleware from "./middlewares/auth/auth.middleware.js";
 
 const app = express();
 const port = process.env.PORT || 3000;
