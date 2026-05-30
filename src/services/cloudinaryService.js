@@ -23,3 +23,27 @@ export const uploadPdfToCloudinary = (fileBuffer, originalName, userId) => {
         uploadStream.end(fileBuffer);
     });
 }
+
+export const uploadPositionToCloudinary = (fileBuffer, originalName, userId) => {
+    return new Promise((resolve, reject) => {
+        // Handle the memory buffer directly
+        const uploadStream = cloudinary.uploader.upload_stream(
+            {
+                folder: `talentmatch_positions/${userId}`,
+                resource_type: 'auto',
+                public_id: `${Date.now()}-${Math.random().toString(36).slice(2)}-${originalName.replace(/\.pdf$/i, '')}`,
+                format: 'pdf'
+            },
+            (error, result) => {
+                if (error) {
+                    console.error("Cloudinary Stream Error:", error);
+                    return reject(new Error("Cloudinary upload failed"));
+                }
+
+                resolve(result.secure_url);
+            }
+        );
+
+        uploadStream.end(fileBuffer);
+    });
+}
