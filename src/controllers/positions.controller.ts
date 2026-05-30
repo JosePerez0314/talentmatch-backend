@@ -2,6 +2,10 @@ import prisma from "../lib/prisma.js";
 import { sendResponseOr404 } from "../lib/responseHandler.js";
 import { Request, Response, NextFunction } from "express";
 import { EducationLevel } from "@prisma/client";
+import "multer";
+import { extract } from "../lib/pdfWrapper.js";
+import { autoCompletePosition } from "../prompts/autoCompletePosition.prompt.js";
+import { uploadPositionToCloudinary } from "../services/cloudinaryService.js";
 
 interface PositionData {
   role: string;
@@ -47,6 +51,53 @@ const positionDataObject = (data: any): PositionData => ({
   positionPdfUrl: data.positionPdfUrl ?? null,
   departmentId: data.departmentId,
 });
+
+type PositionControllers = (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => Promise<void>;
+
+export const automCompletePosition =
+  (): PositionControllers => async (req, res, next) => {
+    const pdfFile = req.file;
+
+    if (!pdfFile) {
+      res.status(400).json({
+        success: false,
+        message: "No PDF file uploaded",
+      });
+      return;
+    }
+
+    const extractPosition = await extract(pdfFile.buffer);
+    console.log("Extracted text from PDF:", pdfFile.originalname);
+
+    if (extractPosition.trim().length < 300) {
+      res.status(400).json({
+        success: false,
+        message: "Extracted text from PDF is too short",
+      });
+      return;
+    }
+
+    const positionJsonData = await autoCompletePosition(extractPosition);
+    console.log("Auto-completion process completed for:", pdfFile.originalname);
+
+    const cloudinaryPositionUrl = await uploadPositionToCloudinary(
+      pdfFile.buffer,
+      pdfFile.originalname,
+      req.user!.id,
+    );
+    console.log("PDF uploaded to Cloudinary for:", pdfFile.originalname);
+
+    res.status(200).json({
+      success: true,
+      data: positionJsonData,
+      cloudinaryPositionUrl,
+      message: "Position data auto-completed and PDF uploaded successfully",
+    });
+  };
 
 export const getPositions = async (
   req: Request,
