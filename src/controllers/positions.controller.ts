@@ -30,6 +30,7 @@ const positionSelectObject: object = {
   technicalSkills: true,
   optionalTechnicalSkills: true,
   softSkills: true,
+  languages: true,
   description: true,
   educationLevel: true,
   educationArea: true,
@@ -46,7 +47,7 @@ const positionDataObject = (data: any): PositionData => ({
   softSkills: data.softSkills,
   languages: data.languages,
   description: data.description,
-  educationLevel: data.educationLevel,
+  educationLevel: data.educationLevel as EducationLevel,
   educationArea: data.educationArea,
   positionPdfUrl: data.positionPdfUrl ?? null,
   departmentId: data.departmentId,
@@ -58,52 +59,7 @@ type PositionControllers = (
   next: NextFunction,
 ) => Promise<void>;
 
-export const automCompletePosition =
-  (): PositionControllers => async (req, res, next) => {
-    const pdfFile = req.file;
-
-    if (!pdfFile) {
-      res.status(400).json({
-        success: false,
-        message: "No PDF file uploaded",
-      });
-      return;
-    }
-
-    const extractPosition = await extract(pdfFile.buffer);
-    console.log("Extracted text from PDF:", pdfFile.originalname);
-
-    if (extractPosition.trim().length < 300) {
-      res.status(400).json({
-        success: false,
-        message: "Extracted text from PDF is too short",
-      });
-      return;
-    }
-
-    const positionJsonData = await autoCompletePosition(extractPosition);
-    console.log("Auto-completion process completed for:", pdfFile.originalname);
-
-    const cloudinaryPositionUrl = await uploadPositionToCloudinary(
-      pdfFile.buffer,
-      pdfFile.originalname,
-      req.user!.id,
-    );
-    console.log("PDF uploaded to Cloudinary for:", pdfFile.originalname);
-
-    res.status(200).json({
-      success: true,
-      data: positionJsonData,
-      cloudinaryPositionUrl,
-      message: "Position data auto-completed and PDF uploaded successfully",
-    });
-  };
-
-export const getPositions = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> => {
+export const getPositions: PositionControllers = async (req, res, next) => {
   const allPositions = await prisma.position.findMany({
     where: {
       userId: req.user!.id,
@@ -116,11 +72,7 @@ export const getPositions = async (
   sendResponseOr404(res, allPositions, "Positions");
 };
 
-export const sendPositions = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> => {
+export const sendPositions: PositionControllers = async (req, res, next) => {
   const data = req.body;
 
   const newPosition = await prisma.position.create({
@@ -138,11 +90,47 @@ export const sendPositions = async (
   });
 };
 
-export const getOnePosition = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> => {
+export const completePosition: PositionControllers = async (req, res, next) => {
+  const pdfFile = req.file;
+
+  if (!pdfFile) {
+    res.status(400).json({
+      success: false,
+      message: "No PDF file uploaded",
+    });
+    return;
+  }
+
+  const extractPosition = await extract(pdfFile.buffer);
+  console.log("Extracted text from PDF:", pdfFile.originalname);
+
+  if (extractPosition.trim().length < 300) {
+    res.status(400).json({
+      success: false,
+      message: "Extracted text from PDF is too short",
+    });
+    return;
+  }
+
+  const positionJsonData = await autoCompletePosition(extractPosition);
+  console.log("Auto-completion process completed for:", pdfFile.originalname);
+
+  const cloudinaryPositionUrl = await uploadPositionToCloudinary(
+    pdfFile.buffer,
+    pdfFile.originalname,
+    req.user!.id,
+  );
+  console.log("PDF uploaded to Cloudinary for:", pdfFile.originalname);
+
+  res.status(200).json({
+    success: true,
+    data: positionJsonData,
+    cloudinaryPositionUrl,
+    message: "Position data auto-completed and PDF uploaded successfully",
+  });
+};
+
+export const getOnePosition: PositionControllers = async (req, res, next) => {
   const id: number = parseInt(req.params.id as string, 10);
 
   const position = await prisma.position.findFirst({
@@ -158,11 +146,7 @@ export const getOnePosition = async (
   sendResponseOr404(res, position, "Position");
 };
 
-export const updatePosition = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> => {
+export const updatePosition: PositionControllers = async (req, res, next) => {
   const id: number = parseInt(req.params.id as string, 10);
   const data = req.body;
 
@@ -192,11 +176,7 @@ export const updatePosition = async (
   });
 };
 
-export const deletePosition = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> => {
+export const deletePosition: PositionControllers = async (req, res, next) => {
   const id: number = parseInt(req.params.id as string, 10);
 
   const position = await prisma.position.findFirst({

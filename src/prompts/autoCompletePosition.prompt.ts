@@ -11,7 +11,7 @@ export const autoCompletePosition = async (
       prompt: {
         id: "pmpt_6a16384686008197b2f90e1e8fad2e2605b712e8b0143570",
         variables: {
-          positionPdf: extractedPosition,
+          positionpdf: extractedPosition,
         },
       },
       input: [
