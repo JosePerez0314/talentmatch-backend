@@ -34,9 +34,7 @@ const positionSelectObject: object = {
   description: true,
   educationLevel: true,
   educationArea: true,
-  positionPdfUrl: true,
   createdAt: true,
-  updatedAt: true,
 };
 
 const positionDataObject = (data: any): PositionData => ({
