@@ -1,5 +1,12 @@
 import express from "express";
 import { catchAsync } from "../lib/catchAsync.js";
+import { validate } from "../middlewares/validation/validate.middleware.js";
+import {
+  sendDepartmentSchema,
+  getOneDepartmentSchema,
+  updateDepartmentSchema,
+  deleteDepartmentSchema,
+} from "../validations/department.validation.js";
 import {
   getDepartments,
   getOneDepartment,
@@ -12,12 +19,24 @@ const router = express.Router();
 
 router.get("/", catchAsync(getDepartments));
 
-router.post("/", catchAsync(sendDepartments));
+router.post("/", validate(sendDepartmentSchema), catchAsync(sendDepartments));
 
-router.get("/:id", catchAsync(getOneDepartment));
+router.get(
+  "/:id",
+  validate(getOneDepartmentSchema),
+  catchAsync(getOneDepartment),
+);
 
-router.put("/:id", catchAsync(updateDepartment));
+router.put(
+  "/:id",
+  validate(updateDepartmentSchema),
+  catchAsync(updateDepartment),
+);
 
-router.delete("/:id", catchAsync(deleteDepartment));
+router.delete(
+  "/:id",
+  validate(deleteDepartmentSchema),
+  catchAsync(deleteDepartment),
+);
 
 export default router;

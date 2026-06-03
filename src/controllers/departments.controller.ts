@@ -2,34 +2,35 @@ import prisma from "../lib/prisma.js";
 import { sendResponseOr404 } from "../lib/responseHandler.js";
 import { Request, Response, NextFunction } from "express";
 
-const departmentSelectProject: object = {
+const departmentSelectProject = {
   id: true,
   userId: true,
   title: true,
   createdAt: true,
   updatedAt: true,
-};
+} as const;
 
-export const getDepartments = async (
+type DepartmentController = (
   req: Request,
   res: Response,
   next: NextFunction,
-): Promise<void> => {
+) => Promise<void>;
+
+export const getDepartments: DepartmentController = async (req, res, next) => {
   const allDepartments = await prisma.department.findMany({
     where: { userId: req.user!.id },
     select: {
       ...departmentSelectProject,
+      _count: {
+        select: { positions: true },
+      },
     },
   });
 
   sendResponseOr404(res, allDepartments, "Departments");
 };
 
-export const sendDepartments = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> => {
+export const sendDepartments: DepartmentController = async (req, res, next) => {
   const data: { title: string } = req.body;
 
   const newDepartment = await prisma.department.create({
@@ -47,32 +48,38 @@ export const sendDepartments = async (
   });
 };
 
-export const getOneDepartment = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> => {
-  const id: number = parseInt(req.params.id as string, 10);
+export const getOneDepartment: DepartmentController = async (
+  req,
+  res,
+  next,
+) => {
+  const id = req.params.id as unknown as number;
 
   const department = await prisma.department.findFirst({
     where: {
       id,
       userId: req.user!.id,
     },
+    select: {
+      ...departmentSelectProject,
+      _count: {
+        select: { positions: true },
+      },
+    },
   });
 
   sendResponseOr404(res, department, "Department");
 };
 
-export const updateDepartment = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> => {
-  const id: number = parseInt(req.params.id as string, 10);
+export const updateDepartment: DepartmentController = async (
+  req,
+  res,
+  next,
+) => {
+  const id = req.params.id as unknown as number;
   const data: { title: string } = req.body;
 
-  const deparment = await prisma.department.update({
+  const department = await prisma.department.update({
     where: {
       id,
       userId: req.user!.id,
@@ -80,15 +87,15 @@ export const updateDepartment = async (
     data,
   });
 
-  sendResponseOr404(res, deparment, "Department");
+  sendResponseOr404(res, department, "Department");
 };
 
-export const deleteDepartment = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> => {
-  const id: number = parseInt(req.params.id as string, 10);
+export const deleteDepartment: DepartmentController = async (
+  req,
+  res,
+  next,
+) => {
+  const id = req.params.id as unknown as number;
 
   const department = await prisma.department.delete({
     where: {
