@@ -10,24 +10,24 @@ import {
 } from "../controllers/positions.controller.js";
 import { validate } from "../middlewares/validation/validate.middleware.js";
 import {
-  deletePositionSchema,
-  getOnePositionSchema,
   sendPositionSchema,
+  getOnePositionSchema,
   updatePositionSchema,
-} from "../validations/positionValidation.js";
+  deletePositionSchema,
+} from "../validations/position.validation.js";
 import upload from "../middlewares/upload/multerConfig.js";
 
 const router = express.Router();
 
 router.get("/", catchAsync(getPositions));
 
-router.post("/", catchAsync(sendPositions));
+router.post("/", validate(sendPositionSchema), catchAsync(sendPositions));
 
 router.post("/complete", upload.single("pdf"), catchAsync(completePosition));
 
-router.get("/:id", catchAsync(getOnePosition));
+router.get("/:id", validate(getOnePositionSchema), catchAsync(getOnePosition));
 
-router.put("/:id", catchAsync(updatePosition));
+router.put("/:id", validate(updatePositionSchema), catchAsync(updatePosition));
 
 router.delete(
   "/:id",
