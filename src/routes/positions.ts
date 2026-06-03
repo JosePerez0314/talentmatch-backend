@@ -7,13 +7,13 @@ import {
   completePosition,
   sendPositions,
   updatePosition,
+  duplicatePosition,
 } from "../controllers/positions.controller.js";
 import { validate } from "../middlewares/validation/validate.middleware.js";
 import {
   sendPositionSchema,
-  getOnePositionSchema,
+  positionsParamsSchema,
   updatePositionSchema,
-  deletePositionSchema,
 } from "../validations/position.validation.js";
 import upload from "../middlewares/upload/multerConfig.js";
 
@@ -25,13 +25,19 @@ router.post("/", validate(sendPositionSchema), catchAsync(sendPositions));
 
 router.post("/complete", upload.single("pdf"), catchAsync(completePosition));
 
-router.get("/:id", validate(getOnePositionSchema), catchAsync(getOnePosition));
+router.post(
+  "/duplicate/:id",
+  validate(positionsParamsSchema),
+  catchAsync(duplicatePosition),
+);
+
+router.get("/:id", validate(positionsParamsSchema), catchAsync(getOnePosition));
 
 router.put("/:id", validate(updatePositionSchema), catchAsync(updatePosition));
 
 router.delete(
   "/:id",
-  validate(deletePositionSchema),
+  validate(positionsParamsSchema),
   catchAsync(deletePosition),
 );
 
