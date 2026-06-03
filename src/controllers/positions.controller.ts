@@ -6,6 +6,7 @@ import "multer";
 import { extract } from "../lib/pdfWrapper.js";
 import { autoCompletePosition } from "../prompts/autoCompletePosition.prompt.js";
 import { uploadPositionToCloudinary } from "../services/cloudinaryService.js";
+import { InputJsonValue } from "@prisma/client/runtime/library";
 
 interface PositionData {
   role: string;
@@ -125,6 +126,47 @@ export const completePosition: PositionControllers = async (req, res, next) => {
     data: positionJsonData,
     cloudinaryPositionUrl,
     message: "Position data auto-completed and PDF uploaded successfully",
+  });
+};
+
+export const duplicatePosition: PositionControllers = async (
+  req,
+  res,
+  next,
+) => {
+  const id = req.params.id as unknown as number;
+
+  const originalPosition = await prisma.position.findFirst({
+    where: {
+      id,
+      userId: req.user!.id,
+    },
+  });
+
+  if (!originalPosition) {
+    res.status(404).json({
+      success: false,
+      message: "Position not found or unauthorized",
+    });
+    return;
+  }
+
+  const { id: _, createdAt: __, ...data } = originalPosition;
+
+  const duplicatedPosition = await prisma.position.create({
+    data: {
+      ...data,
+      role: `${data.role} (Copy)`,
+      technicalSkills: data.technicalSkills as InputJsonValue,
+      optionalTechnicalSkills: data.optionalTechnicalSkills as InputJsonValue,
+      softSkills: data.softSkills as InputJsonValue,
+      languages: data.languages as InputJsonValue,
+    },
+  });
+
+  res.status(201).json({
+    success: true,
+    data: duplicatedPosition,
   });
 };
 
