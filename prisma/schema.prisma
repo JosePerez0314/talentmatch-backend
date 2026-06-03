@@ -21,6 +21,8 @@ enum EducationLevel {
   NONE
   HIGH_SCHOOL
   BACHELOR
+  TECHNICAL
+  UNIVERSITY
   MASTER
   DOCTORATE
 }
