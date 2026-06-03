@@ -21,7 +21,7 @@ interface PositionData {
   departmentId: number;
 }
 
-const positionSelectObject: object = {
+const positionSelectObject = {
   id: true,
   userId: true,
   departmentId: true,
@@ -35,7 +35,7 @@ const positionSelectObject: object = {
   educationLevel: true,
   educationArea: true,
   createdAt: true,
-};
+} as const;
 
 const positionDataObject = (data: any): PositionData => ({
   role: data.role,
@@ -129,7 +129,7 @@ export const completePosition: PositionControllers = async (req, res, next) => {
 };
 
 export const getOnePosition: PositionControllers = async (req, res, next) => {
-  const id: number = parseInt(req.params.id as string, 10);
+  const id = req.params.id as unknown as number;
 
   const position = await prisma.position.findFirst({
     where: {
@@ -145,7 +145,7 @@ export const getOnePosition: PositionControllers = async (req, res, next) => {
 };
 
 export const updatePosition: PositionControllers = async (req, res, next) => {
-  const id: number = parseInt(req.params.id as string, 10);
+  const id = req.params.id as unknown as number;
   const data = req.body;
 
   const position = await prisma.position.findFirst({
@@ -175,7 +175,7 @@ export const updatePosition: PositionControllers = async (req, res, next) => {
 };
 
 export const deletePosition: PositionControllers = async (req, res, next) => {
-  const id: number = parseInt(req.params.id as string, 10);
+  const id = req.params.id as unknown as number;
 
   const position = await prisma.position.findFirst({
     where: {
