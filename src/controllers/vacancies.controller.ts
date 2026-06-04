@@ -1,7 +1,12 @@
 import prisma from "../lib/prisma.js";
+import multer from "multer";
+import plimit from "p-limit";
 import { sendResponseOr404 } from "../lib/responseHandler.js";
 import { Request, Response, NextFunction } from "express";
-import { VacancyStatus } from "@prisma/client";
+import { EducationLevel, VacancyStatus } from "@prisma/client";
+import { extract } from "../lib/pdfWrapper.js";
+import { uploadPdfToCloudinary } from "../services/cloudinaryService.js";
+import { extractCandidateData } from "../prompts/extractCv.prompt.js";
 
 interface VacancyData {
   title: string;
@@ -117,6 +122,85 @@ export const sendVacancies: VacancyController = async (req, res, next) => {
   res.status(201).json({
     success: true,
     data: newVacancy,
+  });
+};
+
+export const uploadCandidate: VacancyController = async (req, res, next) => {
+  const id = req.params.id as unknown as number;
+  const pdfFiles = req.files as Express.Multer.File[] | undefined;
+
+  if (!pdfFiles!) {
+    res.status(400).json({
+      success: false,
+      message: "No PDF file uploaded",
+    });
+    return;
+  }
+
+  const limit = plimit(5); // Limit concurrent processing to 5
+
+  const results = await Promise.all(
+    pdfFiles!.map((pdfFile) =>
+      limit(async () => {
+        try {
+          const extractedData = await extract(pdfFile.buffer);
+          console.log(`Successfully processed file ${pdfFile.originalname}`);
+
+          if (extractedData.trim().length < 500) {
+            throw new Error("Insufficient data extracted from PDF");
+          }
+
+          const candidateData = await extractCandidateData(extractedData);
+
+          const cloudinaryUrl = await uploadPdfToCloudinary(
+            pdfFile.buffer,
+            pdfFile.originalname,
+            req.user!.id,
+          );
+
+          const candidate = await prisma.candidate.create({
+            data: {
+              fullName: candidateData.fullName,
+              email: candidateData.email,
+              role: candidateData.role,
+              yearsOfExperience: candidateData.yearsOfExperience,
+              technicalSkills: candidateData.technicalSkills,
+              optionalTechnicalSkills:
+                candidateData.optionalTechnicalSkills || [],
+              softSkills: candidateData.softSkills,
+              description: candidateData.description,
+              educationLevel: candidateData.educationLevel as EducationLevel,
+              educationArea: candidateData.educationArea,
+              languages: candidateData.languages,
+              fileUrl: cloudinaryUrl,
+              hash: "", // I'll Implement this later, maybe using a hash of the file buffer
+              rawApiPayload: JSON.stringify(candidateData),
+              vacancyId: id,
+              userId: req.user!.id,
+            },
+          });
+
+          return {
+            success: true,
+            data: candidate,
+          };
+        } catch (error) {
+          console.error(
+            `Error processing file ${pdfFile.originalname}:`,
+            error,
+          );
+          return {
+            success: false,
+            message: `Error processing file ${pdfFile.originalname}`,
+          };
+        }
+      }),
+    ),
+  );
+
+  res.status(201).json({
+    success: true,
+    data: results,
   });
 };
 
