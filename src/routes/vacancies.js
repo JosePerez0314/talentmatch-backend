@@ -1,7 +1,7 @@
 import express from "express";
 import { catchAsync } from "../lib/catchAsync.ts";
 import { matchResult } from "../controllers/matchResultController.js";
-import { changeStatus, deleteVacancy, getAllVacancies, getOneVacancy, getVacancyResults, sendVacancies, updateVacancy } from "../controllers/vacancyController.js";
+import { changeStatus, deleteVacancy, getAllVacancies, getOneVacancy, getVacancyResults, sendVacancies, updateVacancy } from "../controllers/vacancies.controller.js";
 import { validate } from "../middlewares/validation/validate.middleware.js"
 import { changeStatusSchema, deleteVacancySchema, getOneVacancySchema, getVacancyResultsSchema, sendVacancySchema, updateVacancySchema } from "../validations/vacancyValidation.js";
 
