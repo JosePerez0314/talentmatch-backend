@@ -1,24 +1,25 @@
 import { openaikey } from "../services/openai.service.js";
-import { PositionExtracted } from "../types/positions.types.js";
+import { CandidateExtracted } from "../types/candidates.types.js";
 
-export const autoCompletePosition = async (
-  extractedPosition: string,
-): Promise<PositionExtracted[]> => {
+export const extractCandidateData = async (
+  extractedText: string,
+): Promise<CandidateExtracted> => {
   console.log("Calling OpenAI Responses API with Prompt ID...");
 
+  // Implement the prompt
   try {
     const response = await openaikey.responses.create({
       model: "gpt-5.4-nano",
       prompt: {
-        id: "pmpt_6a16384686008197b2f90e1e8fad2e2605b712e8b0143570",
+        id: "pmpt_69d1628aedc081968906e966be99f5d70eee7d5bcc4d3d8b",
         variables: {
-          positionpdf: extractedPosition,
+          cvtext: extractedText,
         },
       },
       input: [
         {
           role: "system",
-          content: "Return only valid JSON",
+          content: "Return only valid JSON.",
         },
       ],
     });
@@ -26,7 +27,7 @@ export const autoCompletePosition = async (
     console.log(response.output_text);
     return JSON.parse(response.output_text);
   } catch (error) {
-    console.error("OpenAI API error:", error);
-    throw new Error("Failed to complete position data");
+    console.error("OpenAI API Error:", error);
+    throw new Error("Failed to process resume with AI");
   }
 };
