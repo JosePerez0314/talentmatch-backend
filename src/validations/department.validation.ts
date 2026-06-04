@@ -8,7 +8,7 @@ export const sendDepartmentSchema = z.object({
   body: baseDepartmentBody,
 });
 
-export const getOneDepartmentSchema = z.object({
+export const departmentsParamsSchema = z.object({
   params: z.object({
     id: z.coerce.number().int().positive("Invalid Department ID"),
   }),
@@ -17,12 +17,6 @@ export const getOneDepartmentSchema = z.object({
 export const updateDepartmentSchema = z.object({
   body: baseDepartmentBody.partial(),
 
-  params: z.object({
-    id: z.coerce.number().int().positive("Invalid Department ID"),
-  }),
-});
-
-export const deleteDepartmentSchema = z.object({
   params: z.object({
     id: z.coerce.number().int().positive("Invalid Department ID"),
   }),

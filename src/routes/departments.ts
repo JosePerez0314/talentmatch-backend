@@ -3,9 +3,8 @@ import { catchAsync } from "../lib/catchAsync.js";
 import { validate } from "../middlewares/validation/validate.middleware.js";
 import {
   sendDepartmentSchema,
-  getOneDepartmentSchema,
+  departmentsParamsSchema,
   updateDepartmentSchema,
-  deleteDepartmentSchema,
 } from "../validations/department.validation.js";
 import {
   getDepartments,
@@ -23,7 +22,7 @@ router.post("/", validate(sendDepartmentSchema), catchAsync(sendDepartments));
 
 router.get(
   "/:id",
-  validate(getOneDepartmentSchema),
+  validate(departmentsParamsSchema),
   catchAsync(getOneDepartment),
 );
 
@@ -35,7 +34,7 @@ router.put(
 
 router.delete(
   "/:id",
-  validate(deleteDepartmentSchema),
+  validate(departmentsParamsSchema),
   catchAsync(deleteDepartment),
 );
 

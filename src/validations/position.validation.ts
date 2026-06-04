@@ -46,7 +46,7 @@ export const sendPositionSchema = z.object({
   body: basePositionBody,
 });
 
-export const getOnePositionSchema = z.object({
+export const positionsParamsSchema = z.object({
   params: z.object({
     id: z.coerce.number().int().positive("Invalid Position ID"),
   }),
@@ -57,11 +57,5 @@ export const updatePositionSchema = z.object({
 
   params: z.object({
     id: z.coerce.number().int().positive("Invalid Position ID"),
-  }),
-});
-
-export const deletePositionSchema = z.object({
-  params: z.object({
-    id: z.coerce.number().int().positive("Invalid position ID"),
   }),
 });
