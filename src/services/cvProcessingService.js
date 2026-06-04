@@ -1,6 +1,6 @@
 import { generateCvHash } from "../utils/hash.util.js";
 import prisma from "../lib/prisma.js"
-import { extractCandidateData } from "../prompts/extractCvPrompt.js";
+import { extractCandidateData } from "../prompts/extractCv.prompt.js";
 
 export const processCandidateCv = async (parsedText, userId) => {
     const cvHash = generateCvHash(parsedText);
