@@ -13,7 +13,7 @@ import dashboard from "./routes/dashboard.js";
 // SECURITY MIDDLEWARES
 import corsMiddleware from "./middlewares/security/corsMiddleware.js";
 import helmetMiddleware from "./middlewares/security/helmetMiddleware.js";
-import rateLimitMiddleware from "./middlewares/security/rateLimitMiddleware.js";
+import rateLimitMiddleware from "./middlewares/security/rateLimit.middleware.js";
 
 // ERRORS MIDDLWARES
 import { errorHandler } from "./middlewares/error/errorHandler.js";
