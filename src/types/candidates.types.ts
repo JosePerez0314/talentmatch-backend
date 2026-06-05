@@ -10,9 +10,6 @@ interface CandidateExtracted {
   educationLevel: string;
   educationArea: string;
   languages: string[];
-  aiAnalysis: {
-    projectHighlights: string[];
-  };
 }
 
 export type { CandidateExtracted };
