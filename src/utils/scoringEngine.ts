@@ -12,7 +12,8 @@ interface Candidate {
   yearsOfExperience: number;
   role: string;
   languages: string[];
-  education: string;
+  educationLevel: string;
+  educationArea: string;
   softSkills: string[];
   aiAnalysis?: {
     projectHighlights?: string[];
@@ -25,16 +26,8 @@ interface Position {
   role: string;
   languages: string[];
   educationLevel: string;
-  education: string;
+  educationArea: string;
   softSkills: string[];
-}
-
-interface EducationsLevels {
-  none: number;
-  high_school: number;
-  university: number;
-  masters: number;
-  doctorate: number;
 }
 
 const WEIGHTS: Weights = {
@@ -46,14 +39,15 @@ const WEIGHTS: Weights = {
   SOFT_SKILLS: 0.1,
 };
 
-const EDUCATION_LEVELS: EducationsLevels = {
-  none: 0,
-  high_school: 1,
-  university: 2,
-  masters: 3,
-  doctorate: 4,
+const EDUCATION_LEVELS: Record<string, number> = {
+  NONE: 0,
+  HIGH_SCHOOL: 1,
+  BACHELOR: 2,
+  TECHNICAL: 3,
+  UNIVERSITY: 4,
+  MASTER: 5,
+  DOCTORATE: 6,
 };
-
 interface MatchScoreResult {
   totalScore: number;
   breakdown: Record<string, { score: number; matched?: unknown[] }>;
@@ -137,23 +131,18 @@ export const calculateMatchScore = (
   let educationScore: number = 0;
 
   const getEducationLevel = (education: string): number => {
-    for (const [key, value] of Object.entries(EDUCATION_LEVELS)) {
-      if (education.toLocaleLowerCase().includes(key)) return value;
-    }
-    return 0;
+    return EDUCATION_LEVELS[education.toUpperCase()] ?? 0;
   };
 
-  const positionEduLevel: number = getEducationLevel(
-    position.educationLevel.toLowerCase() ?? 0,
-  );
+  const positionEduLevel: number = getEducationLevel(position.educationLevel);
   const candidateEduLevel: number = getEducationLevel(
-    normalizedCandidate.education,
+    normalizedCandidate.educationLevel,
   );
 
   educationScore =
     positionEduLevel === 0 || candidateEduLevel >= positionEduLevel
       ? WEIGHTS.EDUCATION * 100
-      : 0;
+      : (candidateEduLevel / positionEduLevel) * (WEIGHTS.EDUCATION * 100);
 
   finalScore += educationScore;
   breakdown.education = { score: educationScore };
