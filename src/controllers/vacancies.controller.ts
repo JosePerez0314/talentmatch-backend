@@ -3,10 +3,17 @@ import multer from "multer";
 import plimit from "p-limit";
 import { sendResponseOr404 } from "../lib/responseHandler.js";
 import { Request, Response, NextFunction } from "express";
-import { EducationLevel, VacancyStatus } from "@prisma/client";
+import {
+  EducationLevel,
+  VacancyStatus,
+  Candidate,
+  Position,
+} from "@prisma/client";
 import { extract } from "../lib/pdfWrapper.js";
 import { uploadPdfToCloudinary } from "../services/cloudinaryService.js";
 import { extractCandidateData } from "../prompts/extractCv.prompt.js";
+import { matchEngine } from "../prompts/matchEngine.prompt.js";
+import { calculateMatchScore } from "../utils/scoringEngine.js";
 
 interface VacancyData {
   title: string;
@@ -16,6 +23,32 @@ interface VacancyData {
   status: VacancyStatus;
   departmentId: number;
   positionId: number;
+}
+
+interface PositionEngineData {
+  role: string;
+  yearsOfExperience: number;
+  technicalSkills: string[];
+  optionalTechnicalSkills: string[];
+  softSkills: string[];
+  description: string;
+  educationLevel: string;
+  educationArea: string;
+  languages: string[];
+}
+
+interface CandidateEngineData {
+  fullName: string;
+  email: string;
+  role: string;
+  yearsOfExperience: number;
+  technicalSkills: string[];
+  optionalTechnicalSkills: string[];
+  softSkills: string[];
+  description: string;
+  educationLevel: string;
+  educationArea: string;
+  languages: string[];
 }
 
 const vacanciesDataObject = (data: any): VacancyData => ({
@@ -46,6 +79,36 @@ type VacancyController = (
   res: Response,
   next: NextFunction,
 ) => Promise<void>;
+
+const positionEngineSelectObject = (
+  position: Position,
+): PositionEngineData => ({
+  role: position.role,
+  yearsOfExperience: position.yearsOfExperience,
+  technicalSkills: position.technicalSkills as string[],
+  optionalTechnicalSkills: position.optionalTechnicalSkills as string[],
+  softSkills: position.softSkills as string[],
+  description: position.description,
+  educationLevel: position.educationLevel as EducationLevel,
+  educationArea: position.educationArea,
+  languages: position.languages as string[],
+});
+
+const candidateEngineSelectObject = (
+  candidate: Candidate,
+): CandidateEngineData => ({
+  fullName: candidate.fullName,
+  email: candidate.email,
+  role: candidate.role,
+  yearsOfExperience: candidate.yearsOfExperience,
+  technicalSkills: candidate.technicalSkills as string[],
+  optionalTechnicalSkills: candidate.optionalTechnicalSkills as string[],
+  softSkills: candidate.softSkills as string[],
+  description: candidate.description,
+  educationLevel: candidate.educationLevel as EducationLevel,
+  educationArea: candidate.educationArea,
+  languages: candidate.languages as string[],
+});
 
 export const getAllVacancies = async (
   req: Request,
@@ -201,6 +264,82 @@ export const uploadCandidate: VacancyController = async (req, res, next) => {
   res.status(201).json({
     success: true,
     data: results,
+  });
+};
+
+export const evaluateCandidates: VacancyController = async (req, res, next) => {
+  const id = req.params.id as unknown as number;
+
+  const vacancy = await prisma.vacancy.findUnique({
+    where: {
+      id,
+      userId: req.user!.id,
+    },
+    include: {
+      candidates: true,
+      position: true,
+    },
+  });
+
+  if (!vacancy) {
+    res.status(404).json({ success: false, message: "Vacancy not found" });
+    return;
+  }
+
+  if (vacancy.candidates.length === 0) {
+    res
+      .status(400)
+      .json({ success: false, message: "No candidates to evaluate" });
+    return;
+  }
+
+  const positionData = positionEngineSelectObject(vacancy.position!);
+
+  const limit = plimit(5);
+
+  const matchResults = await Promise.all(
+    vacancy.candidates.map((candidate) =>
+      limit(async () => {
+        try {
+          const normalizedCandidate = await matchEngine(
+            positionData,
+            candidateEngineSelectObject(candidate),
+          );
+
+          const match = calculateMatchScore(positionData, normalizedCandidate);
+
+          const matchResult = await prisma.matchResult.create({
+            data: {
+              matchScore: match.totalScore,
+              educationScore: Math.round(match.breakdown.education.score),
+              experienceScore: Math.round(match.breakdown.experience.score),
+              hardSkillsScore: Math.round(match.breakdown.technical.score),
+              languagesScore: Math.round(match.breakdown.languages.score),
+              roleScore: Math.round(match.breakdown.role.score),
+              softSkillsScore: Math.round(match.breakdown.softSkills.score),
+              normalizedCandidate: JSON.stringify(normalizedCandidate),
+              redFlags: normalizedCandidate.aiAnalysis?.redFlags ?? null,
+              summary: normalizedCandidate.aiAnalysis?.rawTextSummary ?? "",
+              candidateId: candidate.id,
+              vacancyId: id,
+            },
+          });
+
+          return matchResult;
+        } catch (error) {
+          console.error(`Error evaluating candidate ${candidate.id}:`, error);
+          return {
+            success: false,
+            message: `Error evaluating candidate ${candidate.id}`,
+          };
+        }
+      }),
+    ),
+  );
+
+  res.status(201).json({
+    success: true,
+    data: matchResults,
   });
 };
 
