@@ -1,4 +1,4 @@
-import { matchEngine } from "../prompts/matchEnginePrompt.js";
+import { matchEngine } from "../prompts/matchEngine.prompt.js";
 import { calculateMatchScore } from "../utils/scoringEngine.js";
 
 export const computeMatch = async (vacancy, candidate) => {

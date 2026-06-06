@@ -1,4 +1,4 @@
-interface CandidateExtracted {
+interface NormalizedCandidate {
   fullName: string;
   email: string;
   role: string;
@@ -10,6 +10,11 @@ interface CandidateExtracted {
   educationLevel: string;
   educationArea: string;
   languages: string[];
+  aiAnalysis: {
+    rawTextSummary: string;
+    redFlags: string;
+    projectHighlights: string[];
+  };
 }
 
-export type { CandidateExtracted };
+export type { NormalizedCandidate };
