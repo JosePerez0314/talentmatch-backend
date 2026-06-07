@@ -142,6 +142,7 @@ model Vacancy {
   position       Position      @relation(fields: [positionId], references: [id], onDelete: Cascade)
   user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   applications   Application[]
+  candidates     Candidate[]
   matchResults   MatchResult[]
 
   @@index([userId, status])
@@ -173,14 +174,17 @@ model Candidate {
 
   status                  CandidateStatus @default(DISPONIBLE)
   userId                  Int
+  vacancyId               Int
   createdAt               DateTime       @default(now())
   updatedAt               DateTime       @updatedAt
   applications            Application[]
-  user                    User           @relation(fields: [userId], references: [id])
   matchResults            MatchResult[]
+  user                    User           @relation(fields: [userId], references: [id])
+  vacancy                 Vacancy        @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([status])
+  @@index([vacancyId])
 }
 
 /// AI evaluation score connecting a Candidate to a Vacancy.
