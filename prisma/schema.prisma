@@ -33,6 +33,18 @@ enum VacancyStatus {
   CLOSED
 }
 
+enum ApplicationStatus {
+  PENDIENTE
+  EN_PROCESO
+  SELECCIONADO
+  RECHAZADO
+}
+
+enum CandidateStatus {
+  DISPONIBLE
+  CONTRATADO
+}
+
 /// Represents an HR Administrator or Recruiter using the TalentMatch AI platform.
 model User {
   id          Int          @id @default(autoincrement())
@@ -94,6 +106,24 @@ model Position {
   @@index([departmentId])
 }
 
+model Application {
+  id Int @id @default(autoincrement())
+  status ApplicationStatus @default(PENDIENTE)
+
+  candidateId Int
+  vacancyId Int
+  
+  candidate Candidate @relation(fields: [candidateId], references: [id])
+  vacancy Vacancy @relation(fields: [vacancyId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([candidateId, vacancyId])
+  @@index([vacancyId, status])
+  @@index([candidateId])
+}
+
 /// An active job posting linked to a Position. Candidates are uploaded directly here.
 model Vacancy {
   id             Int           @id @default(autoincrement())
@@ -101,19 +131,20 @@ model Vacancy {
   availableSlots Int
   startDate      DateTime
   endDate        DateTime
+
   status         VacancyStatus @default(ACTIVE)
+
   positionId     Int
   departmentId   Int
   userId         Int
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
-  position       Position      @relation(fields: [positionId], references: [id])
-  user           User          @relation(fields: [userId], references: [id])
-  candidates     Candidate[]
+  position       Position      @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  applications   Application[]
   matchResults   MatchResult[]
 
   @@index([userId, status])
-  @@index([status])
   @@index([positionId])
   @@index([departmentId])
 }
@@ -139,16 +170,17 @@ model Candidate {
   hash                    String         @unique
   /// Raw JSON payload returned by the AI for auditing.
   rawApiPayload           Json
-  vacancyId               Int
+
+  status                  CandidateStatus @default(DISPONIBLE)
   userId                  Int
   createdAt               DateTime       @default(now())
   updatedAt               DateTime       @updatedAt
-  vacancy                 Vacancy        @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+  applications            Application[]
   user                    User           @relation(fields: [userId], references: [id])
   matchResults            MatchResult[]
 
   @@index([userId, createdAt])
-  @@index([vacancyId])
+  @@index([status])
 }
 
 /// AI evaluation score connecting a Candidate to a Vacancy.
