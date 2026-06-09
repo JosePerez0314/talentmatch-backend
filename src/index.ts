@@ -5,7 +5,6 @@ import admin from "./routes/admin.js";
 import users from "./routes/users.js";
 import positions from "./routes/positions.js";
 import departments from "./routes/departments.js";
-import uploads from "./routes/uploads.js";
 import vacancies from "./routes/vacancies.js";
 import candidates from "./routes/candidates.js";
 import dashboard from "./routes/dashboard.js";
@@ -43,7 +42,6 @@ app.use(authMiddleware);
 app.use("/api/admin", admin); // ADMIN ROUTE
 app.use("/api/departments", departments);
 app.use("/api/positions", positions);
-app.use("/api/uploads", uploads);
 app.use("/api/vacancies", vacancies);
 app.use("/api/candidates", candidates);
 app.use("/api/dashboard", dashboard);
