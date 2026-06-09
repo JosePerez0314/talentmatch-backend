@@ -74,6 +74,18 @@ export const getPositions: PositionControllers = async (req, res, next) => {
 export const sendPositions: PositionControllers = async (req, res, next) => {
   const data = req.body;
 
+  const department = await prisma.department.findFirst({
+    where: { id: data.departmentId, userId: req.user!.id },
+  });
+
+  if (!department) {
+    res.status(404).json({
+      success: false,
+      message: "Department not found",
+    });
+    return;
+  }
+
   const newPosition = await prisma.position.create({
     data: {
       ...positionDataObject(data),
