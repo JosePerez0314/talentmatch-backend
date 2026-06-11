@@ -1,6 +1,7 @@
 import prisma from "../lib/prisma.js";
 import multer from "multer";
 import plimit from "p-limit";
+import crypto from "crypto";
 import { sendResponseOr404 } from "../lib/responseHandler.js";
 import { Request, Response, NextFunction } from "express";
 import {
@@ -64,7 +65,7 @@ const vacanciesDataObject = (data: any): VacancyData => ({
 const vacanciesSelectObject = {
   id: true,
   title: true,
-  avaibleSlots: true,
+  availableSlots: true,
   startDate: true,
   status: true,
   endDate: true,
@@ -121,8 +122,8 @@ export const getAllVacancies = async (
     },
     select: {
       ...vacanciesSelectObject,
-      __count: {
-        candidates: true,
+      _count: {
+        select: { candidates: true },
       },
       candidates: true,
     },
@@ -205,6 +206,10 @@ export const uploadCandidate: VacancyController = async (req, res, next) => {
   const results = await Promise.all(
     pdfFiles!.map((pdfFile) =>
       limit(async () => {
+        const hash = crypto
+          .createHash("sha256")
+          .update(pdfFile.buffer)
+          .digest("hex");
         try {
           const extractedData = await extract(pdfFile.buffer);
           console.log(`Successfully processed file ${pdfFile.originalname}`);
@@ -212,6 +217,12 @@ export const uploadCandidate: VacancyController = async (req, res, next) => {
           if (extractedData.trim().length < 500) {
             throw new Error("Insufficient data extracted from PDF");
           }
+
+          const existing = await prisma.candidate.findUnique({
+            where: { hash },
+          });
+
+          if (existing) return { success: true, data: existing };
 
           const candidateData = await extractCandidateData(extractedData);
 
@@ -221,8 +232,10 @@ export const uploadCandidate: VacancyController = async (req, res, next) => {
             req.user!.id,
           );
 
-          const candidate = await prisma.candidate.create({
-            data: {
+          const candidate = await prisma.candidate.upsert({
+            where: { hash },
+            update: {},
+            create: {
               fullName: candidateData.fullName,
               email: candidateData.email,
               role: candidateData.role,
@@ -236,7 +249,7 @@ export const uploadCandidate: VacancyController = async (req, res, next) => {
               educationArea: candidateData.educationArea,
               languages: candidateData.languages,
               fileUrl: cloudinaryUrl,
-              hash: "", // I'll Implement this later, maybe using a hash of the file buffer
+              hash: hash,
               rawApiPayload: JSON.stringify(candidateData),
               vacancyId: id,
               userId: req.user!.id,
@@ -247,7 +260,13 @@ export const uploadCandidate: VacancyController = async (req, res, next) => {
             success: true,
             data: candidate,
           };
-        } catch (error) {
+        } catch (error: any) {
+          if (error.code === "P2002") {
+            const existing = await prisma.candidate.findUnique({
+              where: { hash },
+            });
+            return { success: true, data: existing };
+          }
           console.error(
             `Error processing file ${pdfFile.originalname}:`,
             error,
@@ -276,7 +295,15 @@ export const evaluateCandidates: VacancyController = async (req, res, next) => {
       userId: req.user!.id,
     },
     include: {
-      candidates: true,
+      candidates: {
+        where: {
+          matchResults: {
+            none: {
+              vacancyId: id,
+            },
+          },
+        },
+      },
       position: true,
     },
   });
@@ -372,43 +399,65 @@ export const getOneVacancy: VacancyController = async (req, res, next) => {
 
 export const getVacancyResults: VacancyController = async (req, res, next) => {
   const id = req.params.id as unknown as number;
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 20;
+  const skip = (page - 1) * limit;
 
-  const allMatchResults = await prisma.matchResult.findMany({
-    where: {
-      vacancyId: id,
-      vacancy: {
-        userId: req.user!.id,
+  const [allMatchResults, total] = await prisma.$transaction([
+    prisma.matchResult.findMany({
+      where: {
+        vacancyId: id,
+        vacancy: { userId: req.user!.id },
       },
-    },
-    orderBy: {
-      matchScore: "desc",
-    },
-    take: 10,
-    select: {
-      id: true,
-      matchScore: true,
-      summary: true,
-      redFlags: true,
-      hardSkillsScore: true,
-      experienceScore: true,
-      roleScore: true,
-      languagesScore: true,
-      educationScore: true,
-      softSkillsScore: true,
-      normalizedCandidate: true,
-      createdAt: true,
-      candidate: {
-        select: {
-          id: true,
-          fullName: true,
-          email: true,
-          fileUrl: true,
+      orderBy: { matchScore: "desc" },
+      skip,
+      take: limit,
+      select: {
+        id: true,
+        matchScore: true,
+        summary: true,
+        redFlags: true,
+        hardSkillsScore: true,
+        experienceScore: true,
+        roleScore: true,
+        languagesScore: true,
+        educationScore: true,
+        softSkillsScore: true,
+        normalizedCandidate: true,
+        createdAt: true,
+        candidate: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            fileUrl: true,
+            applications: {
+              where: { vacancyId: id },
+              select: { status: true },
+              take: 1,
+            },
+          },
         },
       },
+    }),
+    prisma.matchResult.count({
+      where: {
+        vacancyId: id,
+        vacancy: { userId: req.user!.id },
+      },
+    }),
+  ]);
+
+  res.status(200).json({
+    success: true,
+    data: allMatchResults,
+    meta: {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
     },
   });
-
-  sendResponseOr404(res, allMatchResults, "Match Results");
 };
 
 export const changeStatus: VacancyController = async (req, res, next) => {
