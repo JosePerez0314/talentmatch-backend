@@ -1,5 +1,5 @@
 import prisma from "../lib/prisma.js"
-import { sendResponseOr404 } from "../lib/responseHandler.ts";
+import { sendResponseOr404 } from "../lib/responseHandler.js";
 
 export const getStats = async (req, res, next) => {
     try {
