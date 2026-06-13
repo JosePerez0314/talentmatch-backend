@@ -1,4 +1,4 @@
-import prisma from "../src/lib/prisma.js";
+import prisma from "../src/lib/prisma";
 import bcrypt from "bcrypt";
 
 // User by default
