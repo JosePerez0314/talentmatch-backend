@@ -1,7 +1,7 @@
 import { PrismaClient } from "@prisma/client";
-const prisma = new PrismaClient();
 import bcrypt from "bcrypt";
 
+const prisma = new PrismaClient();
 // User by default
 async function main(): Promise<void> {
   const hashedPassword: string = await bcrypt.hash("Admin123", 10);
