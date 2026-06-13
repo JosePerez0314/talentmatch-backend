@@ -5,13 +5,30 @@ services:
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: root123
-      MYSQL_DATABASE: talentmatch_dev
+      MYSQL_DATABASE: talentmatch_prod
       MYSQL_USER: talentmatch
       MYSQL_PASSWORD: talentmatch123
     ports:
-      - "3307:3306"
+      - "127.0.0.1:3306:3306"
     volumes:
       - talentmatch_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    container_name: talentmatch_api
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    env_file:
+      - .env.production
+    ports:
+      - "3000:3000"
 
 volumes:
   talentmatch_mysql_data:
