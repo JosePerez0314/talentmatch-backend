@@ -1,4 +1,5 @@
-import prisma from "../src/lib/prisma";
+import { PrismaClient } from "@prisma/client";
+const prisma = new PrismaClient();
 import bcrypt from "bcrypt";
 
 // User by default
