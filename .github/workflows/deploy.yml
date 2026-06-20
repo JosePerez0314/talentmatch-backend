@@ -1,13 +1,35 @@
-name: Continuous Deployment
+name: Continuous Integration & Deployment
 
 on:
   push:
     branches:
-      - main # The pipeline triggers only when code is pushed or merged here
+      - main
 
 jobs:
+  # Job 1: Static Analysis Gatekeeper
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Verify TypeScript Compilation
+        run: npm run type-check
+
+  # Job 2: Secure Deployment
   deploy:
     runs-on: ubuntu-latest
+    needs: validate # Crucial: Ensures deployment only happens if TypeScript compiles perfectly
 
     steps:
       - name: Deploy via SSH
@@ -16,7 +38,7 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          port: 22 # Change if you modified your default SSH port
+          port: 22
           script: |
             # 1. Move into the application directory
             cd /projects/talentmatch-backend
@@ -25,13 +47,13 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
-            # 3. Spin down existing containers and rebuild the images
+            # 3. Spin down existing containers and rebuild the images explicitly using production file
             docker compose -f docker-compose.yml down
-            docker compose -d docker-compose.yml up -d --build
+            docker compose -f docker-compose.yml up -d --build
 
             # 4. Run Prisma database migrations inside the active Node container
-            # Replace 'backend-service-name' with the service key defined in your docker-compose.yml
-            docker compose exec -T backend-service-name npx prisma migrate deploy
+            # Make sure 'backend-service-name' matches the service key inside your docker-compose.yml
+            docker compose -f docker-compose.yml exec -T backend-service-name npx prisma migrate deploy
 
             # 5. Prevent server disk space starvation by purging old images
             docker system prune -af
