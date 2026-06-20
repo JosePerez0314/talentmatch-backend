@@ -1,0 +1,37 @@
+name: Continuous Deployment
+
+on:
+  push:
+    branches:
+      - main # The pipeline triggers only when code is pushed or merged here
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22 # Change if you modified your default SSH port
+          script: |
+            # 1. Move into the application directory
+            cd /projects/talentmatch-backend
+
+            # 2. Reset local changes safely and pull the latest production branch
+            git fetch origin main
+            git reset --hard origin/main
+
+            # 3. Spin down existing containers and rebuild the images
+            docker compose -f docker-compose.yml down
+            docker compose -d docker-compose.yml up -d --build
+
+            # 4. Run Prisma database migrations inside the active Node container
+            # Replace 'backend-service-name' with the service key defined in your docker-compose.yml
+            docker compose exec -T backend-service-name npx prisma migrate deploy
+
+            # 5. Prevent server disk space starvation by purging old images
+            docker system prune -af
