@@ -41,7 +41,7 @@ jobs:
           port: 22
           script: |
             # 1. Move into the application directory
-            cd /projects/talentmatch-backend
+            cd /home/deployer/projects/talentmatch-backend
 
             # 2. Reset local changes safely and pull the latest production branch
             git fetch origin main
