@@ -47,13 +47,14 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
-            # 3. Spin down existing containers and rebuild the images explicitly using production file
-            docker compose -f docker-compose.yml down
-            docker compose -f docker-compose.yml up -d --build
+            # 3. Build the new image entirely in the background (API STAYS UP)
+            docker compose -f docker-compose.yml build
 
-            # 4. Run Prisma database migrations inside the active Node container
-            # Make sure 'backend-service-name' matches the service key inside your docker-compose.yml
+            # 4. Instantly swap the old container for the new one (Downtime: 2-3 seconds)
+            docker compose -f docker-compose.yml up -d
+
+            # 5. Run Prisma database migrations inside the active Node container
             docker compose -f docker-compose.yml exec -T backend-service-name npx prisma migrate deploy
 
-            # 5. Prevent server disk space starvation by purging old images
+            # 6. Prevent server disk space starvation by purging old images
             docker system prune -af
