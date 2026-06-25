@@ -274,6 +274,8 @@ export const uploadCandidate: VacancyController = async (req, res, next) => {
           return {
             success: false,
             message: `Error processing file ${pdfFile.originalname}`,
+            error: error?.message || String(error), // ADD THIS
+            stack: error?.stack, // ADD THIS
           };
         }
       }),
