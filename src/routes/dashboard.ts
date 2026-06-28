@@ -4,8 +4,6 @@ import { getSummary } from "../controllers/dashboard.controller.js";
 
 const router = express.Router();
 
-router.get('/', catchAsync(async (req, res, next) => {
-    getSummary(req, res, next);
-}));
+router.get('/', catchAsync(getSummary));
 
 export default router;
