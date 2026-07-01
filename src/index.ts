@@ -15,7 +15,7 @@ import helmetMiddleware from "./middlewares/security/helmetMiddleware.js";
 import rateLimitMiddleware from "./middlewares/security/rateLimit.middleware.js";
 
 // ERRORS MIDDLWARES
-import { errorHandler } from "./middlewares/error/errorHandler.js";
+import { errorHandler } from "./middlewares/error/errorHandler.middleware.js";
 import { notFoundMiddleware } from "./middlewares/error/notFoundMiddleware.js";
 
 // AUTH
