@@ -2,6 +2,7 @@ import prisma from "../lib/prisma.js";
 import multer from "multer";
 import plimit from "p-limit";
 import crypto from "crypto";
+import { z } from "zod";
 import { sendResponseOr404 } from "../lib/responseHandler.js";
 import { Request, Response, NextFunction } from "express";
 import {
@@ -9,19 +10,29 @@ import {
   VacancyStatus,
   Candidate,
   Position,
+  Prisma,
 } from "@prisma/client";
 import { extract } from "../lib/pdfWrapper.js";
 import { uploadPdfToCloudinary } from "../services/cloudinaryService.js";
 import { extractCandidateData } from "../prompts/extractCv.prompt.js";
 import { matchEngine } from "../prompts/matchEngine.prompt.js";
 import { calculateMatchScore } from "../utils/scoringEngine.js";
+import {
+  sendVacancySchema,
+  updateVacancySchema,
+  changeStatusSchema,
+} from "../validations/vacancy.validation.js";
+
+type SendVacancyBody = z.infer<typeof sendVacancySchema>["body"];
+type UpdateVacancyBody = z.infer<typeof updateVacancySchema>["body"];
+type ChangeStatusBody = z.infer<typeof changeStatusSchema>["body"];
 
 interface VacancyData {
   title: string;
   availableSlots: number;
   startDate: Date;
   endDate: Date;
-  status: VacancyStatus;
+  status?: VacancyStatus;
   departmentId: number;
   positionId: number;
 }
@@ -52,15 +63,32 @@ interface CandidateEngineData {
   languages: string[];
 }
 
-const vacanciesDataObject = (data: any): VacancyData => ({
+const vacanciesDataObject = (data: SendVacancyBody): VacancyData => ({
   title: data.title,
   availableSlots: data.availableSlots,
   startDate: data.startDate,
   endDate: data.endDate,
-  status: data.status as VacancyStatus,
+  status: data.status as VacancyStatus | undefined,
   departmentId: data.departmentId,
   positionId: data.positionId,
 });
+
+const buildVacancyUpdateData = (
+  data: UpdateVacancyBody,
+): Prisma.VacancyUncheckedUpdateInput => {
+  const update: Prisma.VacancyUncheckedUpdateInput = {};
+
+  if (data.title !== undefined) update.title = data.title;
+  if (data.availableSlots !== undefined)
+    update.availableSlots = data.availableSlots;
+  if (data.startDate !== undefined) update.startDate = data.startDate;
+  if (data.endDate !== undefined) update.endDate = data.endDate;
+  if (data.status !== undefined) update.status = data.status as VacancyStatus;
+  if (data.departmentId !== undefined) update.departmentId = data.departmentId;
+  if (data.positionId !== undefined) update.positionId = data.positionId;
+
+  return update;
+};
 
 const vacanciesSelectObject = {
   id: true,
@@ -134,7 +162,7 @@ export const getAllVacancies = async (
 };
 
 export const sendVacancies: VacancyController = async (req, res, next) => {
-  const data = req.body;
+  const data = req.body as SendVacancyBody;
 
   const department = await prisma.department.findUnique({
     where: {
@@ -260,8 +288,11 @@ export const uploadCandidate: VacancyController = async (req, res, next) => {
             success: true,
             data: candidate,
           };
-        } catch (error: any) {
-          if (error.code === "P2002") {
+        } catch (error: unknown) {
+          if (
+            error instanceof Prisma.PrismaClientKnownRequestError &&
+            error.code === "P2002"
+          ) {
             const existing = await prisma.candidate.findUnique({
               where: { hash },
             });
@@ -274,8 +305,8 @@ export const uploadCandidate: VacancyController = async (req, res, next) => {
           return {
             success: false,
             message: `Error processing file ${pdfFile.originalname}`,
-            error: error?.message || String(error), // ADD THIS
-            stack: error?.stack, // ADD THIS
+            error: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
           };
         }
       }),
@@ -464,7 +495,7 @@ export const getVacancyResults: VacancyController = async (req, res, next) => {
 
 export const changeStatus: VacancyController = async (req, res, next) => {
   const id = req.params.id as unknown as number;
-  const { status } = req.body;
+  const { status } = req.body as ChangeStatusBody;
 
   const vacancy = await prisma.vacancy.findFirst({
     where: {
@@ -483,7 +514,7 @@ export const changeStatus: VacancyController = async (req, res, next) => {
 
   const updated = await prisma.vacancy.update({
     where: { id },
-    data: { status },
+    data: { status: status as VacancyStatus },
   });
 
   sendResponseOr404(res, updated, "Vacancy Status");
@@ -491,7 +522,7 @@ export const changeStatus: VacancyController = async (req, res, next) => {
 
 export const updateVacancy: VacancyController = async (req, res, next) => {
   const id = req.params.id as unknown as number;
-  const data = req.body;
+  const data = req.body as UpdateVacancyBody;
 
   const vacancy = await prisma.vacancy.findUnique({
     where: {
@@ -510,9 +541,7 @@ export const updateVacancy: VacancyController = async (req, res, next) => {
 
   const updated = await prisma.vacancy.update({
     where: { id },
-    data: {
-      ...vacanciesDataObject(data),
-    },
+    data: buildVacancyUpdateData(data),
   });
 
   sendResponseOr404(res, updated, "Vacancy");

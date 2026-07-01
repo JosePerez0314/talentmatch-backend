@@ -1,12 +1,20 @@
 import prisma from "../lib/prisma.js";
 import { sendResponseOr404 } from "../lib/responseHandler.js";
 import { Request, Response, NextFunction } from "express";
-import { EducationLevel } from "@prisma/client";
+import { EducationLevel, Prisma } from "@prisma/client";
 import "multer";
+import { z } from "zod";
 import { extract } from "../lib/pdfWrapper.js";
 import { autoCompletePosition } from "../prompts/autoCompletePosition.prompt.js";
 import { uploadPositionToCloudinary } from "../services/cloudinaryService.js";
 import { InputJsonValue } from "@prisma/client/runtime/library";
+import {
+  sendPositionSchema,
+  updatePositionSchema,
+} from "../validations/position.validation.js";
+
+type SendPositionBody = z.infer<typeof sendPositionSchema>["body"];
+type UpdatePositionBody = z.infer<typeof updatePositionSchema>["body"];
 
 interface PositionData {
   role: string;
@@ -38,19 +46,44 @@ const positionSelectObject = {
   createdAt: true,
 } as const;
 
-const positionDataObject = (data: any): PositionData => ({
+const positionDataObject = (data: SendPositionBody): PositionData => ({
   role: data.role,
   yearsOfExperience: data.yearsOfExperience,
   technicalSkills: data.technicalSkills,
   optionalTechnicalSkills: data.optionalTechnicalSkills ?? [],
   softSkills: data.softSkills,
-  languages: data.languages,
+  languages: data.languages ?? [],
   description: data.description,
   educationLevel: data.educationLevel as EducationLevel,
-  educationArea: data.educationArea,
-  positionPdfUrl: data.positionPdfUrl ?? null,
+  educationArea: data.educationArea ?? "N/A",
+  positionPdfUrl: null,
   departmentId: data.departmentId,
 });
+
+const buildPositionUpdateData = (
+  data: UpdatePositionBody,
+): Prisma.PositionUncheckedUpdateInput => {
+  const update: Prisma.PositionUncheckedUpdateInput = {};
+
+  if (data.role !== undefined) update.role = data.role;
+  if (data.yearsOfExperience !== undefined)
+    update.yearsOfExperience = data.yearsOfExperience;
+  if (data.technicalSkills !== undefined)
+    update.technicalSkills = data.technicalSkills;
+  if (data.optionalTechnicalSkills !== undefined)
+    update.optionalTechnicalSkills = data.optionalTechnicalSkills;
+  if (data.softSkills !== undefined) update.softSkills = data.softSkills;
+  if (data.languages !== undefined) update.languages = data.languages;
+  if (data.description !== undefined) update.description = data.description;
+  if (data.educationLevel !== undefined)
+    update.educationLevel = data.educationLevel as EducationLevel;
+  if (data.educationArea !== undefined)
+    update.educationArea = data.educationArea;
+  if (data.departmentId !== undefined)
+    update.departmentId = data.departmentId;
+
+  return update;
+};
 
 type PositionControllers = (
   req: Request,
@@ -72,7 +105,7 @@ export const getPositions: PositionControllers = async (req, res, next) => {
 };
 
 export const sendPositions: PositionControllers = async (req, res, next) => {
-  const data = req.body;
+  const data = req.body as SendPositionBody;
 
   const department = await prisma.department.findFirst({
     where: { id: data.departmentId, userId: req.user!.id },
@@ -200,7 +233,7 @@ export const getOnePosition: PositionControllers = async (req, res, next) => {
 
 export const updatePosition: PositionControllers = async (req, res, next) => {
   const id = req.params.id as unknown as number;
-  const data = req.body;
+  const data = req.body as UpdatePositionBody;
 
   const position = await prisma.position.findFirst({
     where: {
@@ -219,7 +252,7 @@ export const updatePosition: PositionControllers = async (req, res, next) => {
 
   const updated = await prisma.position.update({
     where: { id },
-    data: { ...positionDataObject(data) },
+    data: buildPositionUpdateData(data),
   });
 
   res.status(200).json({

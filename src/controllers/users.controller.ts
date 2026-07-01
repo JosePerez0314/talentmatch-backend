@@ -4,6 +4,7 @@ import prisma from "../lib/prisma.js";
 import bcrypt from "bcrypt";
 
 import { Request, Response, NextFunction } from "express";
+import { Prisma } from "@prisma/client";
 
 const DEFAULT_DEPARTMENTS: string[] = [
   "Recursos Humanos (HR)",
@@ -54,8 +55,11 @@ export const createUser = async (
       message: "User created successfully",
       userId: newUser.id,
     });
-  } catch (error: any) {
-    if (error.code === "P2002") {
+  } catch (error: unknown) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
       res.status(409).json({
         success: false,
         error: "Email alredy exists",
