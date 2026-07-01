@@ -1,6 +1,10 @@
 import prisma from "../lib/prisma.js";
 import { sendResponseOr404 } from "../lib/responseHandler.js";
 import { Request, Response, NextFunction } from "express";
+import { z } from "zod";
+import { updateUserRoleSchema } from "../validations/admin.validation.js";
+
+type UpdateUserRoleBody = z.infer<typeof updateUserRoleSchema>["body"];
 
 type AdminController = (
   req: Request,
@@ -85,7 +89,7 @@ export const getAllUsers: AdminController = async (req, res, next) => {
 
 export const updateUserRole: AdminController = async (req, res, next) => {
   const id = req.params.id as unknown as number;
-  const { role } = req.body;
+  const { role } = req.body as UpdateUserRoleBody;
 
   const user = await prisma.user.update({
     where: { id },
