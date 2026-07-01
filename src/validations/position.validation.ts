@@ -26,23 +26,35 @@ const basePositionBody = z.object({
   departmentId: z.coerce.number().int().positive(),
 });
 
-const withEducationRefinement = basePositionBody.superRefine((data, ctx) => {
-  const requiredAreas = [
-    "BACHELOR",
-    "TECHNICAL",
-    "UNIVERSITY",
-    "MASTER",
-    "DOCTORATE",
-  ];
+const EXEMPT_EDUCATION_AREAS = ["NONE", "HIGH_SCHOOL"];
 
-  if (requiredAreas.includes(data.educationLevel) && !data.educationArea) {
-    ctx.addIssue({
-      code: "custom",
-      path: ["educationArea"],
-      message: "Education area is required for this education level",
-    });
-  }
-});
+const withEducationRefinement = basePositionBody
+  .superRefine((data, ctx) => {
+    const requiredAreas = [
+      "BACHELOR",
+      "TECHNICAL",
+      "UNIVERSITY",
+      "MASTER",
+      "DOCTORATE",
+    ];
+
+    if (requiredAreas.includes(data.educationLevel) && !data.educationArea) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["educationArea"],
+        message: "Education area is required for this education level",
+      });
+    }
+  })
+  .transform((data) => {
+    if (
+      EXEMPT_EDUCATION_AREAS.includes(data.educationLevel) &&
+      !data.educationArea
+    ) {
+      return { ...data, educationArea: "N/A" };
+    }
+    return data;
+  });
 
 export const sendPositionSchema = z.object({
   body: withEducationRefinement,
