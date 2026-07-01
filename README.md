@@ -1,124 +1,263 @@
-# 🚀 TalentMatch AI - Backend Architecture & Matching Engine
+# TalentMatch AI — Backend
 
-## 📖 Executive Overview
+> API REST para automatizar la selección y evaluación de candidatos para equipos de RRHH: extrae datos de CVs en PDF con IA, los compara matemáticamente contra los requisitos de una vacante, y entrega un ranking de candidatos listo para revisión humana.
 
-Welcome to the backend repository of **TalentMatch AI**.
-
-TalentMatch AI is an intelligent, multi-tenant SaaS platform designed to automate and optimize the technical recruitment process. This backend system acts as the "brain" of the operation. It is responsible for securely receiving candidate resumes (PDFs), reading them using Artificial Intelligence, and mathematically calculating exactly how well a candidate fits a specific job vacancy.
-
-Our goal is to eliminate the manual hours HR teams spend reading unqualified CVs, providing them with a highly accurate, instantly ranked "Top 10" Leaderboard of the best talent.
+**Stack:** Node.js · Express 5 · TypeScript (migración en curso desde JS) · MySQL · Prisma · Zod · OpenAI API · Cloudinary
+**Estado del proyecto:** funcionalidad core completa (auth, CRUD, motor de matching) — **próxima fase: suite de tests automatizados** (ver [Testing](#-testing)).
 
 ---
 
-## 🧠 How the System Works (The 6-Step Pipeline)
+## Tabla de contenidos
 
-When a recruiter uploads a batch of resumes, our backend processes them through a strict, automated pipeline:
-
-1. **Secure Upload:** The system receives the PDF resumes and securely stores them in the cloud.
-2. **Text Extraction:** We use specialized tools to instantly read all the visual text inside the PDF document.
-3. **Quality Control:** If a PDF is corrupted, scanned poorly, or illegible, the system immediately flags and discards it to protect data integrity.
-4. **AI Reading (The LLM):** We send the raw, messy text of the resume to an advanced AI model. The AI acts as a human reader—it extracts the candidate's skills, years of experience, education, and languages into a clean, organized digital profile.
-5. **The Matching Engine:** The AI _does not_ score the candidate. Instead, our custom backend algorithm takes the AI's clean profile and mathematically compares it against the strict rules of the Job Vacancy.
-6. **Database Storage:** The final candidate profile and their exact "Match Score" are permanently saved in our secure database, ready to be displayed on the recruiter's dashboard.
-
----
-
-## 🎯 The Matching Engine: How We Calculate the Score
-
-To ensure 100% fairness and accuracy, the AI does not guess the score. Our backend uses a deterministic, mathematical algorithm to score candidates out of 100 points based on the following weights:
-
-- **Hard Skills (30%):** Does the candidate have the exact technical tools required?
-- **Experience (20%):** Does the candidate have the required years in the industry?
-- **Role Matching (15%):** Does their past job title semantically match our vacancy?
-- **Languages (15%):** Do they speak the required languages (e.g., English B2)?
-- **Education (10%):** Do they have the required degrees or certifications?
-- **Soft Skills (10%):** Do they show leadership, problem-solving, or communication skills?
-
-### ⚖️ Special Business Rules
-
-To mimic the intuition of a real Senior Recruiter, our algorithm includes special rules:
-
-- **The "Lifesaver" Rule:** If a candidate lacks the required years of formal experience but has built strong personal projects, the system automatically awards them partial experience points so top junior talent isn't ignored. _(Note: This is disabled for strict fields like Medicine or Law)._
-- **The "Guillotine" Rule:** If a candidate is completely missing a mandatory, non-negotiable skill, their final score suffers a massive penalty, instantly removing them from the top ranking.
+- [TalentMatch AI — Backend](#talentmatch-ai--backend)
+  - [Tabla de contenidos](#tabla-de-contenidos)
+  - [Resumen del sistema](#resumen-del-sistema)
+  - [Pipeline de procesamiento de CVs](#pipeline-de-procesamiento-de-cvs)
+  - [Motor de Matching](#motor-de-matching)
+  - [Arquitectura y seguridad](#arquitectura-y-seguridad)
+  - [Stack técnico](#stack-técnico)
+  - [Requisitos previos](#requisitos-previos)
+  - [Variables de entorno](#variables-de-entorno)
+  - [Puesta en marcha (local)](#puesta-en-marcha-local)
+  - [Scripts disponibles](#scripts-disponibles)
+  - [Estructura del proyecto](#estructura-del-proyecto)
+  - [Referencia de la API](#referencia-de-la-api)
+  - [CI/CD y despliegue](#cicd-y-despliegue)
+  - [🧪 Testing](#-testing)
+  - [Convenciones de desarrollo](#convenciones-de-desarrollo)
+  - [Roadmap](#roadmap)
+  - [Licencia](#licencia)
 
 ---
 
-## 🛠️ Tech Stack
+## Resumen del sistema
 
-This backend is built for speed, scalability, and relational data integrity:
+TalentMatch AI es una plataforma B2B multi-tenant: cada usuario (empresa/reclutador) gestiona su propio espacio de **Departamentos → Posiciones → Vacantes → Candidatos**, completamente aislado del resto de los usuarios. Este repositorio es el backend — el "cerebro" que recibe los CVs, los interpreta con IA y calcula qué tan bien encaja cada candidato con una vacante específica.
 
-- **Runtime:** Node.js
-- **Framework:** Express.js (RESTful API Architecture)
-- **Database:** MySQL (Hosted on Aiven for cloud reliability)
-- **ORM:** Prisma (For strict database modeling and type safety)
-- **Security:** Helmet, Express-Rate-Limit, Zod (Payload Validation)
-- **File Storage:** Cloudinary (For secure PDF hosting)
-- **Document Parsing:** `pdf-parse` (For raw text extraction)
-- **AI Integration:** OpenAI API (For unstructured data parsing)
+El objetivo es eliminar las horas que un equipo de RRHH gasta leyendo CVs no calificados, entregando en su lugar un ranking ordenado y explicable de los mejores candidatos.
 
----
+## Pipeline de procesamiento de CVs
 
-## ⚙️ Architecture & Security Rules
+Cuando un reclutador sube uno o varios CVs a una vacante (`POST /api/vacancies/:id/upload`), cada archivo pasa por:
 
-This API follows strict RESTful conventions and Separation of Concerns (SoC). Routes are decoupled into dedicated resources to ensure the codebase remains maintainable and scalable.
+1. **Subida segura:** el PDF se recibe en memoria (Multer, máx. 5MB, solo `application/pdf`) y se guarda en Cloudinary.
+2. **Extracción de texto:** se lee el contenido crudo del PDF (`pdf-parse`).
+3. **Control de calidad:** si el texto extraído tiene menos de 500 caracteres (CV escaneado/corrupto/ilegible), se descarta y se reporta el error para ese archivo puntual — sin bloquear el resto del lote.
+4. **Lectura por IA:** el texto se envía a un modelo de OpenAI, que extrae habilidades, experiencia, educación e idiomas en un perfil estructurado.
+5. **Deduplicación:** se calcula un hash SHA-256 del texto extraído; si ya existe un candidato con ese hash, se reutiliza en vez de volver a llamar a la IA.
+6. **Persistencia:** el perfil normalizado del candidato se guarda en MySQL, asociado a la vacante y al usuario.
 
-1. **Multi-Tenancy Isolation:** All operations are strictly scoped via `userId = req.user.id`. Global system aggregation by standard users is restricted.
-2. **Role-Based Access Control (RBAC):** Distinct isolation between `USER` and `ADMIN` roles. Only `ADMIN` can access global system endpoints.
-3. **Data Integrity:** All protected routes require a valid JWT via the `Authorization` header.
+La evaluación (`POST /api/vacancies/:id/evaluations`) es un paso separado y explícito: corre el motor de matching sobre los candidatos de la vacante que aún no tengan un resultado, con concurrencia limitada (`p-limit`).
 
----
+## Motor de Matching
 
-## 🚀 Getting Started
+La IA **no asigna el puntaje** — solo estructura el perfil. El puntaje final (0–100) lo calcula un algoritmo determinístico (`src/utils/scoringEngine.ts`) con estos pesos:
 
-### Prerequisites
+| Criterio                                        | Peso |
+| ----------------------------------------------- | ---- |
+| Hard Skills (habilidades técnicas obligatorias) | 30%  |
+| Experiencia (años requeridos)                   | 20%  |
+| Coincidencia de rol                             | 15%  |
+| Idiomas                                         | 15%  |
+| Educación                                       | 10%  |
+| Soft Skills                                     | 10%  |
 
-- Node.js (v18+ recommended)
-- MySQL Database
+**Reglas de negocio especiales:**
 
-### Installation
+- **"Lifesaver":** si al candidato le faltan años de experiencia formal pero tiene proyectos personales sólidos, recibe puntos parciales de experiencia en vez de ser descartado automáticamente.
+- **"Guillotina":** si al candidato le falta una habilidad técnica obligatoria (no negociable), el puntaje final recibe una penalización fuerte que lo saca del top del ranking.
 
-1. Clone the repository.
-2. Install dependencies:
+## Arquitectura y seguridad
 
-   ```bash
-   npm install
+Capas obligatorias en cada request: **Rutas → Middleware de validación (Zod) → Controlador → Servicio → Prisma**.
 
-   ```
+- **Autenticación:** JWT (`Authorization: Bearer <token>`), emitido en `POST /api/users/login`.
+- **RBAC:** roles `USER` y `ADMIN`. Solo `ADMIN` accede a `/api/admin/*` (estadísticas globales, gestión de usuarios).
+- **Aislamiento multi-tenant:** toda consulta (excepto `/api/admin`) está filtrada por el `userId` del token — un usuario nunca puede leer ni modificar recursos de otro.
+- **Validación de payloads:** Zod valida `body`, `params` y `query` antes de que cualquier controlador los toque.
+- **Manejo de errores centralizado:** un único `errorHandler` (`src/middlewares/error/errorHandler.middleware.ts`) traduce errores de Zod y de Prisma a respuestas HTTP consistentes, y oculta el detalle interno de errores no controlados cuando `NODE_ENV=production`.
+- **Cabeceras y CORS:** Helmet + una whitelist explícita de orígenes (`ALLOWED_ORIGINS`).
+- **Rate limiting:** 100 requests / 15 minutos por IP (`express-rate-limit`).
+- **Contraseñas:** hasheadas con `bcrypt` antes de persistir.
 
-3. Set up your environment variables (see `.env.example`).
+Para el detalle completo de cada endpoint (parámetros, tipos, códigos de error) ver **[`API_DOCUMENTATION.md`](./API_DOCUMENTATION.md)**.
 
-4. Generate the Prisma Client and push the schema:
+## Stack técnico
 
-   ```bash
-   npx prisma generate
-   npx prisma db push
+| Categoría                  | Tecnología                                         |
+| -------------------------- | -------------------------------------------------- |
+| Runtime                    | Node.js 20+                                        |
+| Framework                  | Express 5                                          |
+| Lenguaje                   | TypeScript (migración progresiva desde JavaScript) |
+| Base de datos              | MySQL 8                                            |
+| ORM                        | Prisma                                             |
+| Validación                 | Zod                                                |
+| Autenticación              | JSON Web Tokens (`jsonwebtoken`) + `bcrypt`        |
+| IA / NLP                   | OpenAI API                                         |
+| Almacenamiento de archivos | Cloudinary                                         |
+| Parsing de PDF             | `pdf-parse`                                        |
+| Subida de archivos         | Multer                                             |
+| Seguridad HTTP             | Helmet, `express-rate-limit`, CORS                 |
+| Concurrencia controlada    | `p-limit`                                          |
 
-   npm run dev
+## Requisitos previos
 
-   📖 API Reference Summary
-   Authentication (/api/users)
-   POST /api/users - Register a new user.
-   ```
+- **Node.js** `20.20.1` o superior (ver `engines` en `package.json`)
+- **Docker** (solo para levantar MySQL en local — el backend corre nativo, nunca dentro de un contenedor en desarrollo)
+- **npm**
+- Credenciales de OpenAI y Cloudinary si vas a probar los flujos de IA/subida de archivos
 
-POST /api/users/login - Authenticate and receive JWT.
+## Variables de entorno
 
-Dashboard (/api/dashboard)
-GET /api/dashboard - Retrieve user-scoped metrics (positions, CVs, active vacancies).
+No existe actualmente un `.env.example` en el repo — crea un `.env` en la raíz con estas variables (agrupadas como en el `.env` real del proyecto):
 
-Core Entities (Protected via JWT)
-Positions (/api/positions): CRUD operations for job roles and required technical/soft skills.
+```env
+# 1. Inicialización de MySQL vía Docker (usado por docker-compose)
+MYSQL_ROOT_PASSWORD=
+MYSQL_DATABASE=
+MYSQL_USER=
+MYSQL_PASSWORD=
 
-Vacancies (/api/vacancies): Manage active job openings and track vacancy status (OPEN, CONTACTING, FILLED).
+# 2. Conexión de Prisma hacia la base de datos
+DATABASE_URL=
 
-Candidates (/api/candidates): Retrieve candidate profiles and semantic match results.
+# 3. Core de Node/Express
+NODE_ENV=development
+PORT=3000
+JWT_SECRET=
 
-Uploads (/api/uploads): POST multipart/form-data PDF extraction engine.
+# 4. Integraciones externas
+OPENAI_API_KEY=
+CLOUDINARY_URL=
+ALLOWED_ORIGINS=http://localhost:5173
 
-Admin Module (/api/admin)
-Requires ADMIN role.
+# 5. Opcional — límite de prueba para cuentas demo (no usado por ninguna ruta activa)
+DEMO_USER=
+```
 
-GET /api/admin/users - List all system users.
+> `DATABASE_URL` debe apuntar al MySQL que levantes con Docker (ver siguiente sección) — usando el puerto expuesto en `docker-compose.local.yml` (`3307` en el host, `3306` dentro del contenedor).
 
-GET /api/admin/stats - Global system metrics.
+## Puesta en marcha (local)
 
-PUT /api/admin/:id/role - Modify user access privileges.
+Sigue la separación de infraestructura del proyecto: **Docker solo corre MySQL**, el backend se ejecuta nativo con Node.
+
+```bash
+# 1. Clonar e instalar dependencias
+git clone <repo-url>
+cd talentmatch-backend
+npm install
+
+# 2. Levantar únicamente la base de datos MySQL
+docker compose -f docker-compose.local.yml up -d
+
+# 3. Configurar tu .env (ver sección anterior)
+
+# 4. Generar el cliente de Prisma y aplicar el schema
+npx prisma generate
+npx prisma migrate dev
+
+# 5. (Opcional) Sembrar un usuario administrador de prueba
+npx prisma db seed
+# Crea admin@admin.ai / Admin123 — cambia esta contraseña de inmediato
+# en cualquier entorno que no sea tu máquina local.
+
+# 6. Levantar el servidor en modo desarrollo (hot reload)
+npm run dev
+```
+
+El servidor queda escuchando en `http://localhost:<PORT>` (por defecto `3000`).
+
+## Scripts disponibles
+
+| Script                     | Descripción                                                            |
+| -------------------------- | ---------------------------------------------------------------------- |
+| `npm run dev`              | Arranca el servidor con recarga automática (`tsx watch`)               |
+| `npm run build`            | Compila TypeScript a `dist/`                                           |
+| `npm start`                | Corre el build compilado (`node dist/index.js`) — usado en producción  |
+| `npm run type-check`       | Verifica tipos sin emitir archivos (`tsc --noEmit`) — es el gate de CI |
+| `npm run type-check:watch` | Igual que arriba, en modo watch                                        |
+| `npm run check-js`         | Chequea los archivos `.js` restantes de la migración a TS              |
+| `npm test`                 | **Sin implementar todavía** — ver [Testing](#-testing)                 |
+
+## Estructura del proyecto
+
+```
+src/
+├── controllers/     # Lógica de request/response por recurso
+├── routes/          # Definición de endpoints + wiring de middlewares
+├── validations/     # Schemas de Zod (body/params/query) por recurso
+├── middlewares/
+│   ├── auth/        # JWT, RBAC, límite de cuentas demo
+│   ├── error/       # Manejador global de errores
+│   ├── security/    # Helmet, CORS, rate limiting
+│   ├── upload/      # Configuración de Multer
+│   └── validation/  # Middleware genérico que aplica los schemas de Zod
+├── services/        # Lógica de negocio reutilizable (matching, Cloudinary, CVs)
+├── prompts/         # Prompts y wrappers de las llamadas a OpenAI
+├── utils/           # Algoritmo de scoring, hashing, etc.
+├── types/           # Tipos e interfaces compartidas
+└── lib/             # Cliente de Prisma, catchAsync, response helpers
+
+prisma/
+├── schema.prisma    # Modelo de datos (MySQL)
+├── migrations/      # Historial de migraciones
+└── seed.ts          # Seed del usuario admin de desarrollo
+```
+
+## Referencia de la API
+
+La documentación completa de cada endpoint (método, auth requerida, parámetros, tipos de body, y códigos de error posibles) vive en **[`API_DOCUMENTATION.md`](./API_DOCUMENTATION.md)**. Resumen de recursos:
+
+| Recurso                                                 | Base path          | Auth                       |
+| ------------------------------------------------------- | ------------------ | -------------------------- |
+| Usuarios / Auth                                         | `/api/users`       | Pública (registro y login) |
+| Departamentos                                           | `/api/departments` | JWT                        |
+| Posiciones                                              | `/api/positions`   | JWT                        |
+| Vacantes                                                | `/api/vacancies`   | JWT                        |
+| Candidatos (solo lectura)                               | `/api/candidates`  | JWT                        |
+| Dashboard (métricas por usuario)                        | `/api/dashboard`   | JWT                        |
+| Administración (métricas globales, gestión de usuarios) | `/api/admin`       | JWT + rol `ADMIN`          |
+
+Los cambios de contrato más recientes (para el equipo de frontend) están en **[`CHANGELOG_FRONTEND.md`](./CHANGELOG_FRONTEND.md)**.
+
+## CI/CD y despliegue
+
+`.github/workflows/deploy.yml` define el pipeline sobre `main`:
+
+1. **Gate de validación:** `npm ci` + `npm run type-check`. Si el proyecto no compila, el pipeline se detiene aquí.
+2. **Despliegue:** solo si el gate anterior pasa, se conecta por SSH al VPS, hace `git reset --hard origin/main`, reconstruye la imagen con `docker compose` y aplica `npx prisma migrate deploy` dentro del contenedor activo. Termina purgando imágenes viejas para no saturar disco.
+
+En el VPS, **todo corre contenerizado** (backend + MySQL vía `docker-compose.yml`), a diferencia del entorno local donde solo la base de datos vive en Docker.
+
+## 🧪 Testing
+
+**Estado actual: sin suite de tests automatizados.** `npm test` todavía no ejecuta nada (`package.json` solo tiene el placeholder por defecto). El pipeline de CI únicamente verifica compilación de TypeScript, no comportamiento.
+
+Esta es la siguiente fase del roadmap del proyecto. Recomendación para cuando se implemente:
+
+- **Unitarios:** `scoringEngine.ts` y las reglas de validación de Zod son los candidatos de mayor valor por ser lógica de negocio pura y determinística.
+- **Integración:** un runner como Vitest o Jest + `supertest` contra una base de datos MySQL de test (vía el mismo `docker-compose.local.yml`), cubriendo al menos los flujos de autenticación, creación/actualización parcial de Posiciones y Vacantes, y el manejo de errores estandarizado documentado en `API_DOCUMENTATION.md`.
+
+## Convenciones de desarrollo
+
+Las reglas de arquitectura, migración JS→TS, y manejo de errores/transacciones que sigue este repo están documentadas en **[`CLAUDE.md`](./CLAUDE.md)**. En resumen:
+
+- El proyecto está en migración activa de JavaScript a TypeScript estricto — el código nuevo se escribe en `.ts` sin `any`.
+- Toda entrada externa (`body`, `params`, `query`) se valida con Zod antes de tocar la base de datos.
+- Operaciones de RRHH con múltiples escrituras dependientes deben usar `$transaction` de Prisma.
+
+## Roadmap
+
+- [x] Definición de esquema de base de datos (Prisma/MySQL)
+- [x] Sistema de autenticación y RBAC (`USER` / `ADMIN`)
+- [x] CRUD de Departamentos, Posiciones y Vacantes
+- [x] Subida y extracción de CVs (PDF → IA → perfil estructurado)
+- [x] Motor de scoring/matching determinístico
+- [x] Hardening de validación y manejo de errores (ver `CHANGELOG_FRONTEND.md`)
+- [ ] **Suite de tests automatizados (unitarios + integración)** ← fase actual
+- [ ] `.env.example` versionado
+- [ ] Cobertura de tests en el pipeline de CI
+
+## Licencia
+
+ISC — ver `package.json`.
