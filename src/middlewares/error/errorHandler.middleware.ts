@@ -41,6 +41,30 @@ export const errorHandler = (
   }
 
   if (
+    err instanceof Prisma.PrismaClientKnownRequestError &&
+    err.code === "P2002"
+  ) {
+    console.warn("[Global Error Logger]:", getMessage(err));
+    res.status(409).json({
+      success: false,
+      error: "A record with this data already exists",
+    });
+    return;
+  }
+
+  if (
+    err instanceof Prisma.PrismaClientKnownRequestError &&
+    err.code === "P2025"
+  ) {
+    console.warn("[Global Error Logger]:", getMessage(err));
+    res.status(404).json({
+      success: false,
+      error: "Record not found",
+    });
+    return;
+  }
+
+  if (
     err instanceof Prisma.PrismaClientValidationError ||
     err instanceof Prisma.PrismaClientKnownRequestError
   ) {
