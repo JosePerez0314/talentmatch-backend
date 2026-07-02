@@ -21,14 +21,14 @@ export const errorHandler = (
   res: Response,
   next: NextFunction,
 ): void => {
-  console.error("[Global Error Logger]:", getMessage(err));
-
   if (res.headersSent) {
+    console.error("[Global Error Logger]:", getMessage(err));
     next(err);
     return;
   }
 
   if (err instanceof ZodError) {
+    console.warn("[Global Error Logger]:", getMessage(err));
     res.status(400).json({
       success: false,
       error: "Validation error",
@@ -41,9 +41,34 @@ export const errorHandler = (
   }
 
   if (
+    err instanceof Prisma.PrismaClientKnownRequestError &&
+    err.code === "P2002"
+  ) {
+    console.warn("[Global Error Logger]:", getMessage(err));
+    res.status(409).json({
+      success: false,
+      error: "A record with this data already exists",
+    });
+    return;
+  }
+
+  if (
+    err instanceof Prisma.PrismaClientKnownRequestError &&
+    err.code === "P2025"
+  ) {
+    console.warn("[Global Error Logger]:", getMessage(err));
+    res.status(404).json({
+      success: false,
+      error: "Record not found",
+    });
+    return;
+  }
+
+  if (
     err instanceof Prisma.PrismaClientValidationError ||
     err instanceof Prisma.PrismaClientKnownRequestError
   ) {
+    console.warn("[Global Error Logger]:", getMessage(err));
     res.status(400).json({
       success: false,
       error: "Invalid data sent to the database",
@@ -53,6 +78,12 @@ export const errorHandler = (
 
   const statusCode =
     err instanceof Error && hasStatusCode(err) ? err.statusCode! : 500;
+
+  if (statusCode >= 500) {
+    console.error("[Global Error Logger]:", getMessage(err));
+  } else {
+    console.warn("[Global Error Logger]:", getMessage(err));
+  }
 
   res.status(statusCode).json({
     success: false,

@@ -1,19 +1,81 @@
-# TalentMatch AI - Arquitectura y Reglas de Ingeniería
+# CLAUDE.md
 
-## Contexto del Proyecto
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-- **Propósito:** Plataforma B2B para la automatización en la selección y evaluación de candidatos para Recursos Humanos.
-- **Stack Backend:** Node.js con Express. Actualmente es un código híbrido entre JavaScript y TypeScript (en proceso de migración hacia TS estricto).
-- **Capa de Datos:** MySQL gestionado a través de Prisma ORM.
-- **Infraestructura Local:** Docker se utiliza _exclusivamente_ para levantar el motor de base de datos MySQL. El backend se ejecuta de forma nativa.
-- **Infraestructura VPS:** Despliegue 100% contenerizado. Tanto el backend de Node como MySQL corren bajo Docker.
+## Project Context
 
-## Reglas de Ejecución Estrictas para Claude
+- **Purpose:** B2B platform for automating candidate selection and evaluation in Human Resources. Each user (company/recruiter) manages an isolated space of **Departments → Positions → Vacancies → Candidates**.
+- **Backend Stack:** Node.js with Express. Currently a hybrid codebase of JavaScript and TypeScript (in the process of a strict TS migration).
+- **Data Layer:** MySQL managed via Prisma ORM.
+- **Local Infrastructure:** Docker is used _exclusively_ to spin up the MySQL database engine. The Node.js backend runs natively.
+- **VPS Infrastructure:** 100% containerized deployment. Both the Node.js backend and MySQL run inside Docker containers.
 
-1. **Cero Autonomía y Aprobación Obligatoria:** NO eres un agente autónomo. Tienes estrictamente prohibido modificar, sobrescribir o eliminar código sin mi aprobación explícita. Debes proponer la solución, mostrar el código y esperar mi confirmación.
-2. **Bloqueo de Acciones Sensibles:** Nunca ejecutes comandos de terminal, alteraciones de esquema, migraciones de base de datos (Prisma), ni acciones destructivas sin explicarme detalladamente el impacto y obtener mi autorización previa.
-3. **Transición a TypeScript:** Si editas un archivo `.js` existente, mantén la compatibilidad. Si creas o editas un archivo `.ts`, aplica tipado estricto. Evita el uso de `any`.
-4. **Cero Atajos CRUD:** Prioriza el rendimiento, la escalabilidad y la separación limpia de responsabilidades (Rutas -> Middlewares de Validación -> Controladores -> Servicios -> Prisma).
-5. **Validación Implacable:** Todo payload entrante (`req.body`, `req.params`, `req.query`) DEBE ser validado y sanitizado rigurosamente antes de interactuar con la base de datos. Analiza exhaustivamente casos de borde (ej. strings por defecto como "NONE").
-6. **Manejo de Errores:** Utiliza el `errorHandler` y `catchAsync` ya existentes en la carpeta `src/lib/` y `src/middlewares/`. Responde siempre con códigos de estado HTTP semánticos.
-7. **Transacciones de Base de Datos:** Si una operación de RRHH requiere múltiples escrituras dependientes, es obligatorio usar `$transaction` en Prisma para garantizar la consistencia en MySQL.
+## Commands
+
+```bash
+# Install
+npm install
+
+# Local database (Docker runs MySQL only — the backend itself runs natively)
+docker compose -f docker-compose.local.yml up -d
+
+# Dev server (hot reload)
+npm run dev
+
+# Type-check (no emit) — this is the CI gate; a broken build stops the deploy pipeline
+npm run type-check
+npm run check-js          # type-checks the remaining legacy .js files
+
+# Build / run production build
+npm run build              # tsc -p tsconfig.build.json -> dist/ (tests excluded)
+npm start                   # node dist/index.js
+
+# Tests (Jest + Supertest, against a dedicated talentmatch_test MySQL DB — see Testing below)
+npm test
+npm test -- src/routes/departments.test.ts   # single file
+npm test -- -t "returns 201"                  # single test by name
+
+# Prisma
+npx prisma generate
+npx prisma migrate dev      # local schema changes
+npx prisma db seed          # seeds admin@admin.ai / Admin123 + default departments
+```
+
+## Architecture
+
+- **Layered request flow (never skip a layer):** Routes → Zod validation middleware → Controllers → (Services) → Prisma → MySQL.
+- **`src/app.ts` vs `src/index.ts`:** `app.ts` builds the Express app (middlewares + routes) and exports it without listening; `index.ts` is the _only_ file that calls `app.listen`. This split exists so Supertest can import `app` directly in tests without opening a real port — don't merge them back together.
+- **Multi-tenant isolation:** every resource except `/api/admin/*` is scoped by `req.user.id` (from the JWT). `Department`, `Position`, `Vacancy`, and `Candidate` all carry a `userId` column, and controllers filter/write by `req.user!.id` — a user can never read or write another user's resources. RBAC has two roles, `USER` and `ADMIN`; only `ADMIN` can hit `/api/admin/*`.
+- **Central error handling:** `src/middlewares/error/errorHandler.middleware.ts` is the single place that turns thrown errors into HTTP responses — `ZodError` → `400`, Prisma `P2002` (unique constraint) → `409`, other known Prisma errors → `400`, otherwise the error's own `statusCode` or `500`. It logs via `console.error` only for real `5xx`/unexpected failures and `console.warn` for expected `4xx` client errors, so log severity reflects actual severity.
+- **Domain hierarchy:** `Department → Position → Vacancy → Candidate`, each scoped to a `userId`. Note `Position.departmentId` currently has `onDelete: Cascade` in `prisma/schema.prisma` — deleting a Department cascades to its Positions rather than being blocked.
+- **CV pipeline:** upload (`POST /api/vacancies/:id/upload`) → PDF stored on Cloudinary → text extracted with `pdf-parse` → quality-gated (<500 chars is rejected without blocking the rest of the batch) → sent to OpenAI to extract a structured profile → SHA-256 hash dedup (skips a repeat OpenAI call for an already-seen CV) → persisted as a `Candidate`. Evaluation (`POST /api/vacancies/:id/evaluations`) is a separate explicit step.
+- **Matching/scoring engine:** the AI only structures the candidate profile — it never assigns the score. `src/utils/scoringEngine.ts` computes a deterministic 0–100 score (Hard Skills 30%, Experience 20%, Role match 15%, Languages 15%, Education 10%, Soft Skills 10%), with two special rules: a "lifesaver" that gives partial experience credit for strong personal projects instead of an automatic reject, and a "guillotine" that heavily penalizes a missing mandatory hard skill. Evaluations run with bounded concurrency via `p-limit`.
+- **Hybrid JS/TS:** several files are still `.js` mid-migration. `tsconfig.json` includes test files (so editors resolve `describe`/`it` without errors); `tsconfig.build.json` excludes them and is what `npm run build` actually uses.
+
+## Testing
+
+- Jest + Supertest, config in `jest.config.js`. `babel-jest` (not `ts-jest`) transpiles both `.ts` and the legacy `.js` files, so tests behave identically whether run via `npm test`, CI, or an editor's single-test runner.
+- Tests run serially (`maxWorkers: 1`): every file shares one physical database and truncates it in `jest.setup.afterEnv.ts` (`beforeAll`/`afterEach`/`afterAll` are wired globally — don't redeclare them per file). Running in parallel would let one file's cleanup wipe another file's fixtures mid-test.
+- `jest.setup.ts` loads `.env.test` and hard-fails if `DATABASE_URL` doesn't contain `talentmatch_test`, so a misconfigured environment can never truncate dev/prod data. The test database/user (`talentmatch_test`) and its migrations are not part of this repo's automation — set up manually per machine (create the DB/user in the local MySQL container, then `DATABASE_URL="..." npx prisma migrate deploy` against it).
+- `src/test-utils/jwt.util.ts` issues real JWTs signed with the test `JWT_SECRET` (`authHeaderFor({ userId, role })`) instead of hitting the login endpoint — faster, and isolates a test from unrelated login bugs. Also exposes `expiredTestToken` and `tokenWithWrongSecret` for auth edge cases.
+- Test files live beside the code they cover (e.g. `src/routes/admin.test.ts`, `src/routes/departments.test.ts`), matched by `src/**/*.test.ts`.
+- **Gotcha:** admin endpoints aggregate across all data and never use `req.user.id` as a DB foreign key, so admin tests can use a hardcoded token `userId`. Most other resources (Department, Position, ...) write `req.user!.id` as a real FK — tests for those must seed an actual `User` row first and mint the token from that row's real `id`, not a hardcoded one.
+
+## Strict Execution Rules for Claude
+
+1. **Zero Autonomy & Mandatory Approval:** You are NOT an autonomous agent. You are strictly forbidden from modifying, overwriting, or deleting code without my explicit approval. You must propose the solution, show the code, and wait for my confirmation before proceeding.
+2. **Block on Sensitive Actions:** Never execute terminal commands, schema alterations, database migrations (Prisma), or any destructive actions without thoroughly explaining the impact and obtaining my prior authorization.
+3. **TypeScript Transition:** If editing an existing `.js` file, maintain compatibility. If creating or editing a `.ts` file, enforce strict typing. Completely avoid the use of `any`.
+4. **Zero CRUD Shortcuts:** Prioritize performance, scalability, and clean separation of concerns (Routes -> Validation Middlewares -> Controllers -> Services -> Prisma).
+5. **Relentless Validation:** Every incoming payload (`req.body`, `req.params`, `req.query`) MUST be rigorously validated and sanitized before interacting with the database. Exhaustively analyze edge cases (e.g., default string inputs like "NONE").
+6. **Error Handling:** Use the existing `errorHandler` and `catchAsync` utilities located in `src/lib/` and `src/middlewares/`. Always respond with proper semantic HTTP status codes.
+7. **Database Transactions:** If an HR operation requires multiple dependent writes, you must use Prisma's `$transaction` API to guarantee data consistency and prevent race conditions in MySQL.
+
+## Git & Commit Formatting
+
+8. **Strict Commit Format (Conventional Commits):** Whenever I explicitly instruct you to generate a commit message or commit a specific set of changes, you MUST strictly adhere to the Conventional Commits specification.
+
+- **Format:** `<type>(<scope>): <subject>`
+- **Types allowed:** `feat`, `fix`, `refactor`, `test`, `docs`, `chore`.
+- **Examples:** `feat(admin): implement JWT test helper utility`, `fix(db): resolve foreign key constraint in test teardown`, `refactor(auth): migrate token validation to strict TypeScript`.
+- When generating the commit message, briefly ensure the subject line accurately reflects the actual architectural or code changes we just discussed.
