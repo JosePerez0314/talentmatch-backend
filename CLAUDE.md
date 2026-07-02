@@ -1,19 +1,28 @@
-# TalentMatch AI - Arquitectura y Reglas de Ingeniería
+# TalentMatch AI - Architecture & Engineering Rules
 
-## Contexto del Proyecto
+## Project Context
 
-- **Propósito:** Plataforma B2B para la automatización en la selección y evaluación de candidatos para Recursos Humanos.
-- **Stack Backend:** Node.js con Express. Actualmente es un código híbrido entre JavaScript y TypeScript (en proceso de migración hacia TS estricto).
-- **Capa de Datos:** MySQL gestionado a través de Prisma ORM.
-- **Infraestructura Local:** Docker se utiliza _exclusivamente_ para levantar el motor de base de datos MySQL. El backend se ejecuta de forma nativa.
-- **Infraestructura VPS:** Despliegue 100% contenerizado. Tanto el backend de Node como MySQL corren bajo Docker.
+- **Purpose:** B2B platform for automating candidate selection and evaluation in Human Resources.
+- **Backend Stack:** Node.js with Express. Currently a hybrid codebase of JavaScript and TypeScript (in the process of a strict TS migration).
+- **Data Layer:** MySQL managed via Prisma ORM.
+- **Local Infrastructure:** Docker is used _exclusively_ to spin up the MySQL database engine. The Node.js backend runs natively.
+- **VPS Infrastructure:** 100% containerized deployment. Both the Node.js backend and MySQL run inside Docker containers.
 
-## Reglas de Ejecución Estrictas para Claude
+## Strict Execution Rules for Claude
 
-1. **Cero Autonomía y Aprobación Obligatoria:** NO eres un agente autónomo. Tienes estrictamente prohibido modificar, sobrescribir o eliminar código sin mi aprobación explícita. Debes proponer la solución, mostrar el código y esperar mi confirmación.
-2. **Bloqueo de Acciones Sensibles:** Nunca ejecutes comandos de terminal, alteraciones de esquema, migraciones de base de datos (Prisma), ni acciones destructivas sin explicarme detalladamente el impacto y obtener mi autorización previa.
-3. **Transición a TypeScript:** Si editas un archivo `.js` existente, mantén la compatibilidad. Si creas o editas un archivo `.ts`, aplica tipado estricto. Evita el uso de `any`.
-4. **Cero Atajos CRUD:** Prioriza el rendimiento, la escalabilidad y la separación limpia de responsabilidades (Rutas -> Middlewares de Validación -> Controladores -> Servicios -> Prisma).
-5. **Validación Implacable:** Todo payload entrante (`req.body`, `req.params`, `req.query`) DEBE ser validado y sanitizado rigurosamente antes de interactuar con la base de datos. Analiza exhaustivamente casos de borde (ej. strings por defecto como "NONE").
-6. **Manejo de Errores:** Utiliza el `errorHandler` y `catchAsync` ya existentes en la carpeta `src/lib/` y `src/middlewares/`. Responde siempre con códigos de estado HTTP semánticos.
-7. **Transacciones de Base de Datos:** Si una operación de RRHH requiere múltiples escrituras dependientes, es obligatorio usar `$transaction` en Prisma para garantizar la consistencia en MySQL.
+1. **Zero Autonomy & Mandatory Approval:** You are NOT an autonomous agent. You are strictly forbidden from modifying, overwriting, or deleting code without my explicit approval. You must propose the solution, show the code, and wait for my confirmation before proceeding.
+2. **Block on Sensitive Actions:** Never execute terminal commands, schema alterations, database migrations (Prisma), or any destructive actions without thoroughly explaining the impact and obtaining my prior authorization.
+3. **TypeScript Transition:** If editing an existing `.js` file, maintain compatibility. If creating or editing a `.ts` file, enforce strict typing. Completely avoid the use of `any`.
+4. **Zero CRUD Shortcuts:** Prioritize performance, scalability, and clean separation of concerns (Routes -> Validation Middlewares -> Controllers -> Services -> Prisma).
+5. **Relentless Validation:** Every incoming payload (`req.body`, `req.params`, `req.query`) MUST be rigorously validated and sanitized before interacting with the database. Exhaustively analyze edge cases (e.g., default string inputs like "NONE").
+6. **Error Handling:** Use the existing `errorHandler` and `catchAsync` utilities located in `src/lib/` and `src/middlewares/`. Always respond with proper semantic HTTP status codes.
+7. **Database Transactions:** If an HR operation requires multiple dependent writes, you must use Prisma's `$transaction` API to guarantee data consistency and prevent race conditions in MySQL.
+
+## Git & Commit Formatting
+
+8. **Strict Commit Format (Conventional Commits):** Whenever I explicitly instruct you to generate a commit message or commit a specific set of changes, you MUST strictly adhere to the Conventional Commits specification.
+
+- **Format:** `<type>(<scope>): <subject>`
+- **Types allowed:** `feat`, `fix`, `refactor`, `test`, `docs`, `chore`.
+- **Examples:** `feat(admin): implement JWT test helper utility`, `fix(db): resolve foreign key constraint in test teardown`, `refactor(auth): migrate token validation to strict TypeScript`.
+- When generating the commit message, briefly ensure the subject line accurately reflects the actual architectural or code changes we just discussed.
