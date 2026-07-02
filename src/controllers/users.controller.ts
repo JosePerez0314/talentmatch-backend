@@ -5,19 +5,7 @@ import bcrypt from "bcrypt";
 
 import { Request, Response, NextFunction } from "express";
 import { Prisma } from "@prisma/client";
-
-const DEFAULT_DEPARTMENTS: string[] = [
-  "Recursos Humanos (HR)",
-  "Tecnología / TI",
-  "Finanzas",
-  "Marketing",
-  "Ventas",
-  "Operaciones",
-  "Atención al Cliente",
-  "Legal",
-  "Servicio al Cliente",
-  "Logística",
-];
+import { DEFAULT_DEPARTMENTS } from "../utils/defaultDepartments.util.js";
 
 interface JwtPayload {
   userId: number;
