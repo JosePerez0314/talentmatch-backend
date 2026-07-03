@@ -1,5 +1,5 @@
 import prisma from "./src/lib/prisma.js";
-import { clearDatabase } from "./src/test-utils/db.util.js";
+import { clearDatabase } from "./src/tests/utils/db.util.js";
 
 // Registered per test file via setupFilesAfterEnv, so every suite gets the
 // same isolation guarantees without importing this manually.

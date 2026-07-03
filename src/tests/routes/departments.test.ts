@@ -1,7 +1,7 @@
 import request from "supertest";
-import app from "../app.js";
-import prisma from "../lib/prisma.js";
-import { authHeaderFor, TestUserRole } from "../test-utils/jwt.util.js";
+import app from "../../app.js";
+import prisma from "../../lib/prisma.js";
+import { authHeaderFor, TestUserRole } from "../utils/jwt.util.js";
 
 const seedUser = (email: string, role: TestUserRole = "USER") =>
   prisma.user.create({ data: { email, password: "hashed", role } });

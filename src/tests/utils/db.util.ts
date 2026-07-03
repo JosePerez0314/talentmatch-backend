@@ -1,4 +1,4 @@
-import prisma from "../lib/prisma.js";
+import prisma from "../../lib/prisma.js";
 
 // Refuses to run against anything but the dedicated test schema — this
 // function is destructive (TRUNCATE), so a wrong DATABASE_URL here would
