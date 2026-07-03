@@ -35,6 +35,11 @@
     "incremental": true,
     "types": ["node", "jest"]
   },
-  "include": ["src/**/*", "jest.setup.ts", "jest.setup.afterEnv.ts"],
+  "include": [
+    "src/**/*",
+    "scripts/**/*",
+    "jest.setup.ts",
+    "jest.setup.afterEnv.ts"
+  ],
   "exclude": ["node_modules", "dist"]
 }

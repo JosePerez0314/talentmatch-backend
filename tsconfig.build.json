@@ -10,6 +10,6 @@
     "dist",
     "**/*.test.ts",
     "**/*.spec.ts",
-    "src/test-utils/**"
+    "src/tests/**"
   ]
 }

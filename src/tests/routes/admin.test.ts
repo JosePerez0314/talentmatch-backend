@@ -1,7 +1,7 @@
 import request from "supertest";
-import app from "../app.js";
-import prisma from "../lib/prisma.js";
-import { authHeaderFor } from "../test-utils/jwt.util.js";
+import app from "../../app.js";
+import prisma from "../../lib/prisma.js";
+import { authHeaderFor } from "../utils/jwt.util.js";
 
 const adminToken = () => authHeaderFor({ userId: 1, role: "ADMIN" });
 const userToken = () => authHeaderFor({ userId: 1, role: "USER" });
