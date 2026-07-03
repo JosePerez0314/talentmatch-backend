@@ -4,7 +4,7 @@
   "description": "- [x] Wireframes and User Flows approval.\r - [ ] Database configuration and Schema definition (Prisma/SQL).\r - [ ] Authentication system (Company / Candidate).\r - [ ] Vacancies CRUD and basic Resume upload.\r - [ ] Core scoring algorithm implementation (Semantic Match).",
   "main": "index.js",
   "scripts": {
-    "test": "jest",
+    "test": "tsx scripts/test.ts",
     "test:watch": "jest --watch",
     "dev": "tsx watch src/index.ts",
     "build": "tsc --incremental false -p tsconfig.build.json",
