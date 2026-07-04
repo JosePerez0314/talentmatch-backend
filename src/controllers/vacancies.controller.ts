@@ -13,7 +13,7 @@ import {
   Prisma,
 } from "@prisma/client";
 import { extract } from "../lib/pdfWrapper.js";
-import { uploadPdfToCloudinary } from "../services/cloudinaryService.js";
+import { uploadPdfToCloudinary } from "../services/cloudinary.service.js";
 import { extractCandidateData } from "../prompts/extractCv.prompt.js";
 import { matchEngine } from "../prompts/matchEngine.prompt.js";
 import { calculateMatchScore } from "../utils/scoringEngine.js";

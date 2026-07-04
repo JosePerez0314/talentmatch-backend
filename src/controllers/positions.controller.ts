@@ -6,7 +6,7 @@ import "multer";
 import { z } from "zod";
 import { extract } from "../lib/pdfWrapper.js";
 import { autoCompletePosition } from "../prompts/autoCompletePosition.prompt.js";
-import { uploadPositionToCloudinary } from "../services/cloudinaryService.js";
+import { uploadPositionToCloudinary } from "../services/cloudinary.service.js";
 import { InputJsonValue } from "@prisma/client/runtime/library";
 import {
   sendPositionSchema,
@@ -79,8 +79,7 @@ const buildPositionUpdateData = (
     update.educationLevel = data.educationLevel as EducationLevel;
   if (data.educationArea !== undefined)
     update.educationArea = data.educationArea;
-  if (data.departmentId !== undefined)
-    update.departmentId = data.departmentId;
+  if (data.departmentId !== undefined) update.departmentId = data.departmentId;
 
   return update;
 };
