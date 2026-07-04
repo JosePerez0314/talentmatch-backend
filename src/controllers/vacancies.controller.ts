@@ -1,10 +1,9 @@
 import prisma from "../lib/prisma.js";
-import multer from "multer";
 import plimit from "p-limit";
-import crypto from "crypto";
 import { z } from "zod";
 import { sendResponseOr404 } from "../lib/responseHandler.js";
 import { Request, Response, NextFunction } from "express";
+import { generateCvHash } from "../utils/hash.util.js";
 import {
   EducationLevel,
   VacancyStatus,
@@ -234,10 +233,7 @@ export const uploadCandidate: VacancyController = async (req, res, next) => {
   const results = await Promise.all(
     pdfFiles!.map((pdfFile) =>
       limit(async () => {
-        const hash = crypto
-          .createHash("sha256")
-          .update(pdfFile.buffer)
-          .digest("hex");
+        const hash = generateCvHash(pdfFile.buffer.toString("utf-8"));
         try {
           const extractedData = await extract(pdfFile.buffer);
           console.log(`Successfully processed file ${pdfFile.originalname}`);
