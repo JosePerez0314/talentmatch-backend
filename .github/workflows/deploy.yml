@@ -26,10 +26,67 @@ jobs:
       - name: Verify TypeScript Compilation
         run: npm run type-check
 
-  # Job 2: Secure Deployment
+  # Job 2: Route Test Suite (gates the deploy)
+  test:
+    runs-on: ubuntu-latest
+    needs: validate # Only run the suite once TypeScript compiles
+
+    services:
+      # Ephemeral MySQL for the test run only. MYSQL_DATABASE auto-creates the
+      # schema; the guard in jest.setup.ts still refuses to run unless
+      # DATABASE_URL points at talentmatch_test.
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: talentmatch_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DATABASE_URL: "mysql://root:root@127.0.0.1:3306/talentmatch_test"
+      JWT_SECRET: "ci-test-secret"
+      # Dummies: this run skips the OpenAI/Cloudinary tests, but the OpenAI
+      # client is built at import time, so the var must be non-empty for the
+      # Express app to load. The CLOUDINARY_URL keeps a valid parseable shape.
+      OPENAI_API_KEY: "sk-ci-placeholder"
+      CLOUDINARY_URL: "cloudinary://123456789012345:ci_placeholder_secret@ci-demo"
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Apply Migrations to Test Database
+        run: npx prisma migrate deploy
+
+      - name: Run Route Test Suite
+        # upload.test.ts is a perf benchmark that forces real OpenAI/Cloudinary
+        # calls (PERF_FILES in scripts/test.ts), so it is excluded — CI never
+        # hits paid APIs. The external blocks in positions/vacancies auto-skip
+        # in a non-interactive (non-TTY) shell like this runner.
+        run: npm test -- src/tests/routes/ --testPathIgnorePatterns=upload.test.ts
+
+  # Job 3: Secure Deployment
   deploy:
     runs-on: ubuntu-latest
-    needs: validate # Crucial: Ensures deployment only happens if TypeScript compiles perfectly
+    needs: [validate, test] # Deploy only after TypeScript compiles AND every route test passes
 
     steps:
       - name: Deploy via SSH
