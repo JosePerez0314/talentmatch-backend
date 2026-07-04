@@ -1,10 +1,10 @@
 import prisma from "../lib/prisma.js";
-import multer from "multer";
 import plimit from "p-limit";
-import crypto from "crypto";
 import { z } from "zod";
 import { sendResponseOr404 } from "../lib/responseHandler.js";
 import { Request, Response, NextFunction } from "express";
+import { findExistingCandidateByCv } from "../services/cvProcessing.service.js";
+import { assertCandidateIsCv } from "../services/candidateValidation.service.js";
 import {
   EducationLevel,
   VacancyStatus,
@@ -13,7 +13,7 @@ import {
   Prisma,
 } from "@prisma/client";
 import { extract } from "../lib/pdfWrapper.js";
-import { uploadPdfToCloudinary } from "../services/cloudinaryService.js";
+import { uploadPdfToCloudinary } from "../services/cloudinary.service.js";
 import { extractCandidateData } from "../prompts/extractCv.prompt.js";
 import { matchEngine } from "../prompts/matchEngine.prompt.js";
 import { calculateMatchScore } from "../utils/scoringEngine.js";
@@ -234,11 +234,18 @@ export const uploadCandidate: VacancyController = async (req, res, next) => {
   const results = await Promise.all(
     pdfFiles!.map((pdfFile) =>
       limit(async () => {
-        const hash = crypto
-          .createHash("sha256")
-          .update(pdfFile.buffer)
-          .digest("hex");
+        let hash: string | undefined;
         try {
+          // Service: generate the buffer hash + check whether the candidate exists
+          const { hash: cvHash, existingCandidate } =
+            await findExistingCandidateByCv(pdfFile.buffer);
+          hash = cvHash;
+
+          // Dedup: if it already exists, stop here (no extract, OpenAI, or Cloudinary)
+          if (existingCandidate) {
+            return { success: true, data: existingCandidate };
+          }
+
           const extractedData = await extract(pdfFile.buffer);
           console.log(`Successfully processed file ${pdfFile.originalname}`);
 
@@ -246,13 +253,12 @@ export const uploadCandidate: VacancyController = async (req, res, next) => {
             throw new Error("Insufficient data extracted from PDF");
           }
 
-          const existing = await prisma.candidate.findUnique({
-            where: { hash },
-          });
-
-          if (existing) return { success: true, data: existing };
-
           const candidateData = await extractCandidateData(extractedData);
+
+          // Reject non-CV PDFs (empty AI profile) before wasting a Cloudinary
+          // upload. Throwing here only stops this file; the rest of the batch
+          // keeps processing in its own concurrent task.
+          assertCandidateIsCv(candidateData);
 
           const cloudinaryUrl = await uploadPdfToCloudinary(
             pdfFile.buffer,
@@ -260,10 +266,8 @@ export const uploadCandidate: VacancyController = async (req, res, next) => {
             req.user!.id,
           );
 
-          const candidate = await prisma.candidate.upsert({
-            where: { hash },
-            update: {},
-            create: {
+          const candidate = await prisma.candidate.create({
+            data: {
               fullName: candidateData.fullName,
               email: candidateData.email,
               role: candidateData.role,
@@ -291,7 +295,8 @@ export const uploadCandidate: VacancyController = async (req, res, next) => {
         } catch (error: unknown) {
           if (
             error instanceof Prisma.PrismaClientKnownRequestError &&
-            error.code === "P2002"
+            error.code === "P2002" &&
+            hash
           ) {
             const existing = await prisma.candidate.findUnique({
               where: { hash },
