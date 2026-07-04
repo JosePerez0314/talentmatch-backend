@@ -4,6 +4,7 @@ import { z } from "zod";
 import { sendResponseOr404 } from "../lib/responseHandler.js";
 import { Request, Response, NextFunction } from "express";
 import { findExistingCandidateByCv } from "../services/cvProcessing.service.js";
+import { assertCandidateIsCv } from "../services/candidateValidation.service.js";
 import {
   EducationLevel,
   VacancyStatus,
@@ -253,6 +254,11 @@ export const uploadCandidate: VacancyController = async (req, res, next) => {
           }
 
           const candidateData = await extractCandidateData(extractedData);
+
+          // Reject non-CV PDFs (empty AI profile) before wasting a Cloudinary
+          // upload. Throwing here only stops this file; the rest of the batch
+          // keeps processing in its own concurrent task.
+          assertCandidateIsCv(candidateData);
 
           const cloudinaryUrl = await uploadPdfToCloudinary(
             pdfFile.buffer,

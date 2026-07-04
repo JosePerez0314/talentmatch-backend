@@ -5,6 +5,9 @@ import { authHeaderFor, TestUserRole } from "../utils/jwt.util.js";
 import { makePdfBuffer, SAMPLE_CV_TEXT } from "../utils/pdf.util.js";
 import { generateCvHash } from "../../utils/hash.util.js";
 import { findExistingCandidateByCv } from "../../services/cvProcessing.service.js";
+import * as extractCvPrompt from "../../prompts/extractCv.prompt.js";
+import * as cloudinaryService from "../../services/cloudinary.service.js";
+import type { CandidateExtracted } from "../../types/candidates.types.js";
 
 const seedUser = (email: string, role: TestUserRole = "USER") =>
   prisma.user.create({ data: { email, password: "hashed", role } });
@@ -705,5 +708,161 @@ describe("CV hashing", () => {
         seedCandidate(owner.id, vacancy.id, hash),
       ).rejects.toMatchObject({ code: "P2002" });
     });
+  });
+});
+
+// Exercises the real upload pipeline (multer -> real PDF -> pdf-parse) but
+// stubs the two external services (OpenAI extraction + Cloudinary upload) with
+// jest.spyOn so the flow is deterministic and runs without network access.
+// Spies are set per test and restored in afterEach, so the opt-in external
+// tests above keep hitting the real services when RUN_EXTERNAL_TESTS=true.
+describe("POST /api/vacancies/:id/upload — non-CV rejection (mocked AI + Cloudinary)", () => {
+  const FAKE_CLOUDINARY_URL = "https://res.cloudinary.test/fake-cv.pdf";
+
+  // A fully-populated profile, as OpenAI returns for a real CV.
+  const validProfile: CandidateExtracted = {
+    fullName: "Jane Doe",
+    email: "jane.doe@example.com",
+    role: "Backend Developer",
+    yearsOfExperience: 5,
+    technicalSkills: ["TypeScript", "Node.js"],
+    optionalTechnicalSkills: ["Docker"],
+    softSkills: ["Communication"],
+    description: "Experienced backend engineer.",
+    educationLevel: "UNIVERSITY",
+    educationArea: "Computer Science",
+    languages: ["English"],
+  };
+
+  // The all-blank shape OpenAI returns when the PDF is not a CV.
+  const emptyProfile: CandidateExtracted = {
+    fullName: "",
+    email: "",
+    role: "",
+    yearsOfExperience: 0,
+    technicalSkills: [],
+    optionalTechnicalSkills: [],
+    softSkills: [],
+    description: "",
+    educationLevel: "NONE",
+    educationArea: "",
+    languages: [],
+  };
+
+  // A non-CV document long enough to clear the controller's 500-char quality
+  // gate, so it actually reaches OpenAI (which then returns the empty profile).
+  const NON_CV_TEXT = [
+    "RESTAURANT MENU — Bella Italia",
+    "Appetizers: bruschetta, garlic bread, caprese salad, stuffed mushrooms.",
+    "Pasta: spaghetti carbonara, penne arrabiata, fettuccine alfredo, lasagna.",
+    "Pizza: margherita, pepperoni, four cheese, vegetarian, prosciutto.",
+    "Main courses: grilled salmon, chicken parmesan, ribeye steak, risotto.",
+    "Desserts: tiramisu, panna cotta, gelato, cannoli, affogato bianco.",
+    "Drinks: espresso, cappuccino, red wine, white wine, sparkling water.",
+    "Opening hours: Monday to Sunday, 12:00 to 23:00. Reservations recommended.",
+    "This document is a food menu and holds no candidate resume information.",
+  ].join("\n");
+
+  let uploadSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    uploadSpy = jest
+      .spyOn(cloudinaryService, "uploadPdfToCloudinary")
+      .mockResolvedValue(FAKE_CLOUDINARY_URL);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it("uploads a CV to Cloudinary, evaluates it via OpenAI and persists the candidate", async () => {
+    const { owner, department, position } = await seedGraph();
+    const vacancy = await seedVacancy(owner.id, department.id, position.id);
+    const pdf = await makePdfBuffer(SAMPLE_CV_TEXT);
+
+    jest
+      .spyOn(extractCvPrompt, "extractCandidateData")
+      .mockResolvedValue(validProfile);
+
+    const res = await request(app)
+      .post(`/api/vacancies/${vacancy.id}/upload`)
+      .set("Authorization", tokenFor(owner))
+      .attach("pdfs", pdf, "cv.pdf");
+
+    expect(res.status).toBe(201);
+    expect(res.body.data[0].success).toBe(true);
+    expect(res.body.data[0].data.fullName).toBe("Jane Doe");
+    expect(res.body.data[0].data.fileUrl).toBe(FAKE_CLOUDINARY_URL);
+    expect(uploadSpy).toHaveBeenCalledTimes(1);
+
+    const persisted = await prisma.candidate.findFirst({
+      where: { vacancyId: vacancy.id, email: "jane.doe@example.com" },
+    });
+    expect(persisted).not.toBeNull();
+  });
+
+  it("rejects a non-CV PDF (OpenAI returns the empty profile) without persisting it", async () => {
+    const { owner, department, position } = await seedGraph();
+    const vacancy = await seedVacancy(owner.id, department.id, position.id);
+    const pdf = await makePdfBuffer(NON_CV_TEXT);
+
+    jest
+      .spyOn(extractCvPrompt, "extractCandidateData")
+      .mockResolvedValue(emptyProfile);
+
+    const res = await request(app)
+      .post(`/api/vacancies/${vacancy.id}/upload`)
+      .set("Authorization", tokenFor(owner))
+      .attach("pdfs", pdf, "menu.pdf");
+
+    // Batch endpoint still returns 201, but this file failed.
+    expect(res.status).toBe(201);
+    expect(res.body.data[0].success).toBe(false);
+    expect(res.body.data[0].error).toMatch(/not a valid CV/i);
+
+    // Rejected before Cloudinary and never persisted.
+    expect(uploadSpy).not.toHaveBeenCalled();
+    const count = await prisma.candidate.count({
+      where: { vacancyId: vacancy.id },
+    });
+    expect(count).toBe(0);
+  });
+
+  it("in a mixed batch, stops only the non-CV and still processes the valid CV", async () => {
+    const { owner, department, position } = await seedGraph();
+    const vacancy = await seedVacancy(owner.id, department.id, position.id);
+    const cvPdf = await makePdfBuffer(SAMPLE_CV_TEXT);
+    const notCvPdf = await makePdfBuffer(NON_CV_TEXT);
+
+    // Branch on the extracted text: the menu becomes an empty profile, the CV
+    // a populated one — mirroring what OpenAI would do per document.
+    jest
+      .spyOn(extractCvPrompt, "extractCandidateData")
+      .mockImplementation(async (text: string) =>
+        text.toUpperCase().includes("MENU") ? emptyProfile : validProfile,
+      );
+
+    const res = await request(app)
+      .post(`/api/vacancies/${vacancy.id}/upload`)
+      .set("Authorization", tokenFor(owner))
+      .attach("pdfs", cvPdf, "cv.pdf")
+      .attach("pdfs", notCvPdf, "menu.pdf");
+
+    expect(res.status).toBe(201);
+    const results = res.body.data as Array<{
+      success: boolean;
+      error?: string;
+    }>;
+    expect(results.filter((r) => r.success)).toHaveLength(1);
+    const failed = results.filter((r) => !r.success);
+    expect(failed).toHaveLength(1);
+    expect(failed[0].error).toMatch(/not a valid CV/i);
+
+    // Only the valid CV was uploaded and persisted.
+    expect(uploadSpy).toHaveBeenCalledTimes(1);
+    const count = await prisma.candidate.count({
+      where: { vacancyId: vacancy.id },
+    });
+    expect(count).toBe(1);
   });
 });
