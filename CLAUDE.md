@@ -75,10 +75,11 @@ npx prisma db seed          # seeds admin@admin.ai / Admin123 + default departme
 5. **Relentless Validation:** Every incoming payload (`req.body`, `req.params`, `req.query`) MUST be rigorously validated and sanitized before interacting with the database. Exhaustively analyze edge cases (e.g., default string inputs like "NONE").
 6. **Error Handling:** Use the existing `errorHandler` and `catchAsync` utilities located in `src/lib/` and `src/middlewares/`. Always respond with proper semantic HTTP status codes.
 7. **Database Transactions:** If an HR operation requires multiple dependent writes, you must use Prisma's `$transaction` API to guarantee data consistency and prevent race conditions in MySQL.
+8. **English-Only Code Comments:** All code comments MUST be written in English — inline (`//`), block (`/* */`), and JSDoc alike — regardless of the language we converse in. This keeps the codebase consistent for every contributor. When you touch a file that still carries Spanish comments, translate them to English as part of that change.
 
 ## Git & Commit Formatting
 
-8. **Strict Commit Format (Conventional Commits):** Whenever I explicitly instruct you to generate a commit message or commit a specific set of changes, you MUST strictly adhere to the Conventional Commits specification.
+9. **Strict Commit Format (Conventional Commits):** Whenever I explicitly instruct you to generate a commit message or commit a specific set of changes, you MUST strictly adhere to the Conventional Commits specification.
 
 - **Format:** `<type>(<scope>): <subject>`
 - **Types allowed:** `feat`, `fix`, `refactor`, `test`, `docs`, `chore`.
