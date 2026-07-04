@@ -3,6 +3,8 @@ import app from "../../app.js";
 import prisma from "../../lib/prisma.js";
 import { authHeaderFor, TestUserRole } from "../utils/jwt.util.js";
 import { makePdfBuffer, SAMPLE_CV_TEXT } from "../utils/pdf.util.js";
+import { generateCvHash } from "../../utils/hash.util.js";
+import { findExistingCandidateByCv } from "../../services/cvProcessing.service.js";
 
 const seedUser = (email: string, role: TestUserRole = "USER") =>
   prisma.user.create({ data: { email, password: "hashed", role } });
@@ -602,5 +604,106 @@ describe("POST /api/vacancies/:id/upload", () => {
       expect(Array.isArray(res.body.data)).toBe(true);
       expect(res.body.data[0].success).toBe(true);
     }, EXTERNAL_TIMEOUT_MS);
+  });
+});
+
+describe("CV hashing", () => {
+  // generateCvHash is a pure function: no DB, no external services.
+  describe("generateCvHash (pure)", () => {
+    it("is deterministic for the same string input", () => {
+      expect(generateCvHash("some cv text")).toBe(generateCvHash("some cv text"));
+    });
+
+    it("is deterministic for the same buffer input", () => {
+      expect(generateCvHash(Buffer.from("some cv bytes"))).toBe(
+        generateCvHash(Buffer.from("some cv bytes")),
+      );
+    });
+
+    it("returns a 64-char lowercase hex SHA-256 digest", () => {
+      expect(generateCvHash("anything")).toMatch(/^[a-f0-9]{64}$/);
+    });
+
+    it("produces different hashes for different content", () => {
+      expect(generateCvHash("alice cv")).not.toBe(generateCvHash("bob cv"));
+    });
+
+    it("trims surrounding whitespace for string inputs", () => {
+      expect(generateCvHash("  cv text  ")).toBe(generateCvHash("cv text"));
+    });
+
+    it("does NOT trim buffer inputs (byte-exact)", () => {
+      expect(generateCvHash(Buffer.from("  cv text  "))).not.toBe(
+        generateCvHash(Buffer.from("cv text")),
+      );
+    });
+
+    it("matches a trimmed string against the equivalent buffer bytes", () => {
+      // A string is trimmed then hashed; an already-trimmed buffer hashes the
+      // same bytes, so the two digests must line up.
+      expect(generateCvHash("cv text")).toBe(
+        generateCvHash(Buffer.from("cv text")),
+      );
+    });
+
+    it("handles empty input without throwing", () => {
+      expect(generateCvHash("")).toMatch(/^[a-f0-9]{64}$/);
+      expect(generateCvHash(Buffer.alloc(0))).toMatch(/^[a-f0-9]{64}$/);
+    });
+  });
+
+  // findExistingCandidateByCv hashes the buffer and looks up the dedup row.
+  describe("findExistingCandidateByCv (DB dedup)", () => {
+    it("returns the buffer's hash and null when no candidate exists (happy path)", async () => {
+      const buffer = Buffer.from("a brand new cv");
+
+      const result = await findExistingCandidateByCv(buffer);
+
+      expect(result.hash).toBe(generateCvHash(buffer));
+      expect(result.existingCandidate).toBeNull();
+    });
+
+    it("returns the existing candidate when one already has that hash", async () => {
+      const { owner, department, position } = await seedGraph();
+      const vacancy = await seedVacancy(owner.id, department.id, position.id);
+      const buffer = Buffer.from("an already seen cv");
+      const hash = generateCvHash(buffer);
+      const seeded = await seedCandidate(owner.id, vacancy.id, hash);
+
+      const result = await findExistingCandidateByCv(buffer);
+
+      expect(result.hash).toBe(hash);
+      expect(result.existingCandidate).not.toBeNull();
+      expect(result.existingCandidate!.id).toBe(seeded.id);
+    });
+
+    it("does not match a candidate seeded from a different CV", async () => {
+      const { owner, department, position } = await seedGraph();
+      const vacancy = await seedVacancy(owner.id, department.id, position.id);
+      await seedCandidate(
+        owner.id,
+        vacancy.id,
+        generateCvHash(Buffer.from("cv A")),
+      );
+
+      const result = await findExistingCandidateByCv(Buffer.from("cv B"));
+
+      expect(result.existingCandidate).toBeNull();
+    });
+  });
+
+  // Error path: the hash column is @unique, so two candidates can never share
+  // one — the second write is rejected with Prisma's P2002.
+  describe("hash uniqueness (error path)", () => {
+    it("rejects a second candidate that reuses an existing CV hash", async () => {
+      const { owner, department, position } = await seedGraph();
+      const vacancy = await seedVacancy(owner.id, department.id, position.id);
+      const hash = generateCvHash(Buffer.from("a duplicated cv"));
+      await seedCandidate(owner.id, vacancy.id, hash);
+
+      await expect(
+        seedCandidate(owner.id, vacancy.id, hash),
+      ).rejects.toMatchObject({ code: "P2002" });
+    });
   });
 });

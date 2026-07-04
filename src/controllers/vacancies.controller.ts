@@ -3,7 +3,7 @@ import plimit from "p-limit";
 import { z } from "zod";
 import { sendResponseOr404 } from "../lib/responseHandler.js";
 import { Request, Response, NextFunction } from "express";
-import { generateCvHash } from "../utils/hash.util.js";
+import { findExistingCandidateByCv } from "../services/cvProcessing.service.js";
 import {
   EducationLevel,
   VacancyStatus,
@@ -233,20 +233,24 @@ export const uploadCandidate: VacancyController = async (req, res, next) => {
   const results = await Promise.all(
     pdfFiles!.map((pdfFile) =>
       limit(async () => {
-        const hash = generateCvHash(pdfFile.buffer.toString("utf-8"));
+        let hash: string | undefined;
         try {
+          // Service: generate the buffer hash + check whether the candidate exists
+          const { hash: cvHash, existingCandidate } =
+            await findExistingCandidateByCv(pdfFile.buffer);
+          hash = cvHash;
+
+          // Dedup: if it already exists, stop here (no extract, OpenAI, or Cloudinary)
+          if (existingCandidate) {
+            return { success: true, data: existingCandidate };
+          }
+
           const extractedData = await extract(pdfFile.buffer);
           console.log(`Successfully processed file ${pdfFile.originalname}`);
 
           if (extractedData.trim().length < 500) {
             throw new Error("Insufficient data extracted from PDF");
           }
-
-          const existing = await prisma.candidate.findUnique({
-            where: { hash },
-          });
-
-          if (existing) return { success: true, data: existing };
 
           const candidateData = await extractCandidateData(extractedData);
 
@@ -256,10 +260,8 @@ export const uploadCandidate: VacancyController = async (req, res, next) => {
             req.user!.id,
           );
 
-          const candidate = await prisma.candidate.upsert({
-            where: { hash },
-            update: {},
-            create: {
+          const candidate = await prisma.candidate.create({
+            data: {
               fullName: candidateData.fullName,
               email: candidateData.email,
               role: candidateData.role,
@@ -287,7 +289,8 @@ export const uploadCandidate: VacancyController = async (req, res, next) => {
         } catch (error: unknown) {
           if (
             error instanceof Prisma.PrismaClientKnownRequestError &&
-            error.code === "P2002"
+            error.code === "P2002" &&
+            hash
           ) {
             const existing = await prisma.candidate.findUnique({
               where: { hash },
