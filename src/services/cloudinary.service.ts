@@ -6,8 +6,8 @@ type CloudinaryFolder =
   | "talentmatch_positions";
 
 /**
- * Sube un buffer PDF a Cloudinary vía upload_stream y resuelve con la secure_url.
- * Centraliza la lógica de subida para CVs y descripciones de posición.
+ * Uploads a PDF buffer to Cloudinary via upload_stream and resolves with the
+ * secure_url. Centralizes the upload logic for CVs and position descriptions.
  */
 const uploadBufferToCloudinary = (
   fileBuffer: Buffer,
