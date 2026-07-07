@@ -12,7 +12,7 @@ export const sendResponseOr404 = <T>(
 ) => {
   if (!data) {
     return res.status(404).json({
-      success: "false",
+      success: false,
       error: `${entityName} not found`,
     });
   }
