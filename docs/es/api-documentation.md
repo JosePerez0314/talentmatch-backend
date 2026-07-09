@@ -175,7 +175,7 @@ Crea una posición. Valida que `departmentId` exista y pertenezca al usuario.
 | Campo (body)              | Tipo                      | Requerido   | Validación                                            |
 | ------------------------- | ------------------------- | ----------- | ----------------------------------------------------- |
 | `role`                    | `string`                  | Sí          | mínimo 5 caracteres                                   |
-| `yearsOfExperience`       | `number`                  | Sí          | entero positivo (acepta coerción desde string)        |
+| `yearsOfExperience`       | `number`                  | Sí          | entero ≥ 0 — acepta `0` para roles entry-level (coerción desde string) |
 | `technicalSkills`         | `string[]`                | Sí          | mínimo 1 elemento                                     |
 | `optionalTechnicalSkills` | `string[]`                | No          | —                                                     |
 | `softSkills`              | `string[]`                | Sí          | —                                                     |
@@ -465,7 +465,7 @@ Documentado para que el frontend sepa a qué atenerse hoy, no a un comportamient
 2. ~~**`success: "false"` (string) en el caso 404 de `sendResponseOr404`**, en vez de `false` (booleano) como en el resto de la API.~~ **Corregido (2026-07-07):** `sendResponseOr404` ahora devuelve `success: false` como booleano también en el caso 404, consistente con el resto de la API. Un chequeo estricto (`response.success === false`) en frontend ya funciona correctamente para este caso.
 3. **Errores de tipo de archivo/tamaño en Multer no tienen `statusCode` asignado** (`multerConfig.js` lanza un `Error` genérico), por lo que hoy caen al branch de `500` del manejador global en vez de `400`, en `POST /positions/complete` y `POST /vacancies/:id/upload`.
 4. **`GET /api/admin/stats` es global** (todos los usuarios de la plataforma), mientras que `GET /api/dashboard` es por usuario — no confundir ambos como la misma fuente de verdad.
-5. Existe un middleware `identifyUserDemo` (`demoTrialMiddleware.js`) para limitar cuentas demo a 5 días, pero **no está enlazado a ninguna ruta activa** actualmente — es código presente pero no ejecutado.
+5. ~~Existe un middleware `identifyUserDemo` (`demoTrialMiddleware.js`) para limitar cuentas demo a 5 días, pero no está enlazado a ninguna ruta activa.~~ **Eliminado (2026-07-04, #138):** el middleware de límite de cuentas demo (`demoTrialMiddleware.js`) fue borrado del repositorio junto con `matchRepository.js` por tratarse de código muerto. Ya no existe ninguna referencia a cuentas demo en el backend (la variable de entorno `DEMO_USER` quedó también sin uso).
 
 ---
 
