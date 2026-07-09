@@ -4,7 +4,7 @@ import { EducationLevel } from "@prisma/client";
 const basePositionBody = z.object({
   role: z.string().min(5, "Role is required"),
 
-  yearsOfExperience: z.coerce.number().int().positive(),
+  yearsOfExperience: z.coerce.number().int().nonnegative(),
 
   technicalSkills: z.array(z.string()).min(1),
 

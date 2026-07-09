@@ -82,6 +82,24 @@ describe("POST /api/positions", () => {
     expect(persisted).not.toBeNull();
   });
 
+  it("returns 201 when yearsOfExperience is 0 (entry-level position)", async () => {
+    const owner = await seedUser("owner@test.com");
+    const department = await seedDepartment(owner.id, "Engineering");
+
+    const res = await request(app)
+      .post("/api/positions")
+      .set("Authorization", tokenFor(owner))
+      .send({ ...validPositionBody(department.id), yearsOfExperience: 0 });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data).toMatchObject({ yearsOfExperience: 0 });
+
+    const persisted = await prisma.position.findUniqueOrThrow({
+      where: { id: res.body.data.id },
+    });
+    expect(persisted.yearsOfExperience).toBe(0);
+  });
+
   it("returns 401 Unauthorized when no token is provided", async () => {
     const res = await request(app)
       .post("/api/positions")
