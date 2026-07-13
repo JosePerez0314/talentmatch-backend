@@ -866,3 +866,119 @@ describe("POST /api/vacancies/:id/upload — non-CV rejection (mocked AI + Cloud
     expect(count).toBe(1);
   });
 });
+
+describe("POST /api/vacancies/:id/upload — duplicate CV dedup (mocked AI + Cloudinary)", () => {
+  const FAKE_CLOUDINARY_URL = "https://res.cloudinary.test/fake-cv.pdf";
+  const validProfile: CandidateExtracted = {
+    fullName: "Jane Doe",
+    email: "jane.doe@example.com",
+    role: "Backend Developer",
+    yearsOfExperience: 5,
+    technicalSkills: ["TypeScript", "Node.js"],
+    optionalTechnicalSkills: ["Docker"],
+    softSkills: ["Communication"],
+    description: "Experienced backend engineer.",
+    educationLevel: "UNIVERSITY",
+    educationArea: "Computer Science",
+    languages: ["English"],
+  };
+
+  let uploadSpy: jest.SpyInstance;
+  let extractSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    uploadSpy = jest
+      .spyOn(cloudinaryService, "uploadPdfToCloudinary")
+      .mockResolvedValue(FAKE_CLOUDINARY_URL);
+    extractSpy = jest
+      .spyOn(extractCvPrompt, "extractCandidateData")
+      .mockResolvedValue(validProfile);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it("re-uploading the same PDF to the same vacancy dedups instead of creating a second candidate", async () => {
+    const { owner, department, position } = await seedGraph();
+    const vacancy = await seedVacancy(owner.id, department.id, position.id);
+    const pdf = await makePdfBuffer(SAMPLE_CV_TEXT);
+
+    const first = await request(app)
+      .post(`/api/vacancies/${vacancy.id}/upload`)
+      .set("Authorization", tokenFor(owner))
+      .attach("pdfs", pdf, "cv.pdf");
+
+    expect(first.status).toBe(201);
+    expect(first.body.data[0].success).toBe(true);
+    const firstCandidateId = first.body.data[0].data.id;
+    expect(uploadSpy).toHaveBeenCalledTimes(1);
+    expect(extractSpy).toHaveBeenCalledTimes(1);
+
+    const second = await request(app)
+      .post(`/api/vacancies/${vacancy.id}/upload`)
+      .set("Authorization", tokenFor(owner))
+      .attach("pdfs", pdf, "cv.pdf");
+
+    expect(second.status).toBe(201);
+    expect(second.body.data[0].success).toBe(true);
+    expect(second.body.data[0].data.id).toBe(firstCandidateId);
+    // Deduped before extraction/upload: neither external service is called again.
+    expect(uploadSpy).toHaveBeenCalledTimes(1);
+    expect(extractSpy).toHaveBeenCalledTimes(1);
+
+    const count = await prisma.candidate.count({
+      where: { vacancyId: vacancy.id },
+    });
+    expect(count).toBe(1);
+  });
+
+  it("uploading the same PDF to a different vacancy dedups globally instead of creating a second candidate", async () => {
+    const { owner, department, position } = await seedGraph();
+    const vacancyA = await seedVacancy(
+      owner.id,
+      department.id,
+      position.id,
+      "ACTIVE",
+      "Vacancy A",
+    );
+    const vacancyB = await seedVacancy(
+      owner.id,
+      department.id,
+      position.id,
+      "ACTIVE",
+      "Vacancy B",
+    );
+    const pdf = await makePdfBuffer(SAMPLE_CV_TEXT);
+
+    const first = await request(app)
+      .post(`/api/vacancies/${vacancyA.id}/upload`)
+      .set("Authorization", tokenFor(owner))
+      .attach("pdfs", pdf, "cv.pdf");
+
+    expect(first.status).toBe(201);
+    const firstCandidateId = first.body.data[0].data.id;
+    expect(uploadSpy).toHaveBeenCalledTimes(1);
+    expect(extractSpy).toHaveBeenCalledTimes(1);
+
+    const second = await request(app)
+      .post(`/api/vacancies/${vacancyB.id}/upload`)
+      .set("Authorization", tokenFor(owner))
+      .attach("pdfs", pdf, "cv.pdf");
+
+    expect(second.status).toBe(201);
+    expect(second.body.data[0].success).toBe(true);
+    // Hash is globally unique: existing candidate is returned as-is, still
+    // tied to vacancy A — never duplicated into vacancy B.
+    expect(second.body.data[0].data.id).toBe(firstCandidateId);
+    expect(second.body.data[0].data.vacancyId).toBe(vacancyA.id);
+    expect(uploadSpy).toHaveBeenCalledTimes(1);
+    expect(extractSpy).toHaveBeenCalledTimes(1);
+
+    expect(await prisma.candidate.count()).toBe(1);
+    const countInB = await prisma.candidate.count({
+      where: { vacancyId: vacancyB.id },
+    });
+    expect(countInB).toBe(0);
+  });
+});
