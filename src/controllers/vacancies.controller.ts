@@ -239,13 +239,27 @@ export const uploadCandidate: VacancyController = async (req, res, next) => {
       limit(async () => {
         let hash: string | undefined;
         try {
-          // Service: generate the buffer hash + check whether the candidate exists
+          // Service: generate the buffer hash + check whether the candidate
+          // already exists for this user (hash dedup is scoped per user)
           const { hash: cvHash, existingCandidate } =
-            await findExistingCandidateByCv(pdfFile.buffer);
+            await findExistingCandidateByCv(pdfFile.buffer, req.user!.id);
           hash = cvHash;
 
-          // Dedup: if it already exists, stop here (no extract, OpenAI, or Cloudinary)
+          // Dedup: if it already exists, stop here (no extract, OpenAI, or
+          // Cloudinary) — but still link it to *this* vacancy via Application,
+          // so the same candidate can be evaluated across multiple vacancies
+          // instead of staying tied only to the vacancy of the first upload.
           if (existingCandidate) {
+            await prisma.application.upsert({
+              where: {
+                candidateId_vacancyId: {
+                  candidateId: existingCandidate.id,
+                  vacancyId: id,
+                },
+              },
+              update: {},
+              create: { candidateId: existingCandidate.id, vacancyId: id },
+            });
             return { success: true, data: existingCandidate };
           }
 
@@ -291,6 +305,10 @@ export const uploadCandidate: VacancyController = async (req, res, next) => {
             },
           });
 
+          await prisma.application.create({
+            data: { candidateId: candidate.id, vacancyId: id },
+          });
+
           return {
             success: true,
             data: candidate,
@@ -301,9 +319,21 @@ export const uploadCandidate: VacancyController = async (req, res, next) => {
             error.code === "P2002" &&
             hash
           ) {
-            const existing = await prisma.candidate.findUnique({
-              where: { hash },
+            const existing = await prisma.candidate.findFirst({
+              where: { hash, userId: req.user!.id },
             });
+            if (existing) {
+              await prisma.application.upsert({
+                where: {
+                  candidateId_vacancyId: {
+                    candidateId: existing.id,
+                    vacancyId: id,
+                  },
+                },
+                update: {},
+                create: { candidateId: existing.id, vacancyId: id },
+              });
+            }
             return { success: true, data: existing };
           }
           console.error(
@@ -336,15 +366,6 @@ export const evaluateCandidates: VacancyController = async (req, res, next) => {
       userId: req.user!.id,
     },
     include: {
-      candidates: {
-        where: {
-          matchResults: {
-            none: {
-              vacancyId: id,
-            },
-          },
-        },
-      },
       position: true,
     },
   });
@@ -354,7 +375,27 @@ export const evaluateCandidates: VacancyController = async (req, res, next) => {
     return;
   }
 
-  if (vacancy.candidates.length === 0) {
+  // Pending-to-evaluate candidates come from Application (who applied to this
+  // vacancy), not Candidate.vacancyId (which only reflects the vacancy of the
+  // original upload) — this is what lets a candidate reused across vacancies
+  // (same hash, same user) actually get evaluated for each one.
+  const pendingApplications = await prisma.application.findMany({
+    where: {
+      vacancyId: id,
+      candidate: {
+        matchResults: {
+          none: {
+            vacancyId: id,
+          },
+        },
+      },
+    },
+    include: {
+      candidate: true,
+    },
+  });
+
+  if (pendingApplications.length === 0) {
     res
       .status(400)
       .json({ success: false, message: "No candidates to evaluate" });
@@ -366,7 +407,7 @@ export const evaluateCandidates: VacancyController = async (req, res, next) => {
   const limit = plimit(5);
 
   const matchResults = await Promise.all(
-    vacancy.candidates.map((candidate) =>
+    pendingApplications.map(({ candidate }) =>
       limit(async () => {
         try {
           const normalizedCandidate = await matchEngine(

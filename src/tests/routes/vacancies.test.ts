@@ -6,6 +6,7 @@ import { makePdfBuffer, SAMPLE_CV_TEXT } from "../utils/pdf.util.js";
 import { generateCvHash } from "../../utils/hash.util.js";
 import { findExistingCandidateByCv } from "../../services/cvProcessing.service.js";
 import * as extractCvPrompt from "../../prompts/extractCv.prompt.js";
+import * as matchEnginePrompt from "../../prompts/matchEngine.prompt.js";
 import * as cloudinaryService from "../../services/cloudinary.service.js";
 import type { CandidateExtracted } from "../../types/candidates.types.js";
 
@@ -655,25 +656,27 @@ describe("CV hashing", () => {
     });
   });
 
-  // findExistingCandidateByCv hashes the buffer and looks up the dedup row.
-  describe("findExistingCandidateByCv (DB dedup)", () => {
+  // findExistingCandidateByCv hashes the buffer and looks up the dedup row,
+  // scoped to a single user — dedup must never cross tenants.
+  describe("findExistingCandidateByCv (DB dedup, per user)", () => {
     it("returns the buffer's hash and null when no candidate exists (happy path)", async () => {
+      const owner = await seedUser("owner@test.com");
       const buffer = Buffer.from("a brand new cv");
 
-      const result = await findExistingCandidateByCv(buffer);
+      const result = await findExistingCandidateByCv(buffer, owner.id);
 
       expect(result.hash).toBe(generateCvHash(buffer));
       expect(result.existingCandidate).toBeNull();
     });
 
-    it("returns the existing candidate when one already has that hash", async () => {
+    it("returns the existing candidate when this same user already has that hash", async () => {
       const { owner, department, position } = await seedGraph();
       const vacancy = await seedVacancy(owner.id, department.id, position.id);
       const buffer = Buffer.from("an already seen cv");
       const hash = generateCvHash(buffer);
       const seeded = await seedCandidate(owner.id, vacancy.id, hash);
 
-      const result = await findExistingCandidateByCv(buffer);
+      const result = await findExistingCandidateByCv(buffer, owner.id);
 
       expect(result.hash).toBe(hash);
       expect(result.existingCandidate).not.toBeNull();
@@ -689,16 +692,33 @@ describe("CV hashing", () => {
         generateCvHash(Buffer.from("cv A")),
       );
 
-      const result = await findExistingCandidateByCv(Buffer.from("cv B"));
+      const result = await findExistingCandidateByCv(
+        Buffer.from("cv B"),
+        owner.id,
+      );
+
+      expect(result.existingCandidate).toBeNull();
+    });
+
+    it("does not match a candidate with the same hash owned by a different user (tenant isolation)", async () => {
+      const { owner, department, position } = await seedGraph();
+      const vacancy = await seedVacancy(owner.id, department.id, position.id);
+      const buffer = Buffer.from("a cv shared across two companies");
+      const hash = generateCvHash(buffer);
+      await seedCandidate(owner.id, vacancy.id, hash);
+
+      const otherUser = await seedUser("other-tenant@test.com");
+      const result = await findExistingCandidateByCv(buffer, otherUser.id);
 
       expect(result.existingCandidate).toBeNull();
     });
   });
 
-  // Error path: the hash column is @unique, so two candidates can never share
-  // one — the second write is rejected with Prisma's P2002.
-  describe("hash uniqueness (error path)", () => {
-    it("rejects a second candidate that reuses an existing CV hash", async () => {
+  // Error path: hash is unique per (userId, hash), so the *same* user can
+  // never write two candidates sharing one — the second write is rejected
+  // with Prisma's P2002.
+  describe("hash uniqueness (error path, per user)", () => {
+    it("rejects a second candidate that reuses an existing CV hash for the same user", async () => {
       const { owner, department, position } = await seedGraph();
       const vacancy = await seedVacancy(owner.id, department.id, position.id);
       const hash = generateCvHash(Buffer.from("a duplicated cv"));
@@ -707,6 +727,24 @@ describe("CV hashing", () => {
       await expect(
         seedCandidate(owner.id, vacancy.id, hash),
       ).rejects.toMatchObject({ code: "P2002" });
+    });
+
+    it("allows two different users to each have a candidate with the same hash", async () => {
+      const { owner, department, position } = await seedGraph();
+      const vacancy = await seedVacancy(owner.id, department.id, position.id);
+      const hash = generateCvHash(Buffer.from("a cv shared across two companies"));
+      await seedCandidate(owner.id, vacancy.id, hash);
+
+      const other = await seedGraph("other-tenant@test.com");
+      const otherVacancy = await seedVacancy(
+        other.owner.id,
+        other.department.id,
+        other.position.id,
+      );
+
+      await expect(
+        seedCandidate(other.owner.id, otherVacancy.id, hash),
+      ).resolves.toMatchObject({ hash });
     });
   });
 });
@@ -933,7 +971,7 @@ describe("POST /api/vacancies/:id/upload — duplicate CV dedup (mocked AI + Clo
     expect(count).toBe(1);
   });
 
-  it("uploading the same PDF to a different vacancy dedups globally instead of creating a second candidate", async () => {
+  it("uploading the same PDF to a different vacancy dedups the Candidate but links it to both via Application", async () => {
     const { owner, department, position } = await seedGraph();
     const vacancyA = await seedVacancy(
       owner.id,
@@ -968,17 +1006,86 @@ describe("POST /api/vacancies/:id/upload — duplicate CV dedup (mocked AI + Clo
 
     expect(second.status).toBe(201);
     expect(second.body.data[0].success).toBe(true);
-    // Hash is globally unique: existing candidate is returned as-is, still
-    // tied to vacancy A — never duplicated into vacancy B.
+    // Same Candidate row is reused (hash dedup) — no second AI/Cloudinary call,
+    // no duplicate Candidate — but it's now also linked to vacancy B.
     expect(second.body.data[0].data.id).toBe(firstCandidateId);
     expect(second.body.data[0].data.vacancyId).toBe(vacancyA.id);
     expect(uploadSpy).toHaveBeenCalledTimes(1);
     expect(extractSpy).toHaveBeenCalledTimes(1);
 
     expect(await prisma.candidate.count()).toBe(1);
-    const countInB = await prisma.candidate.count({
+    const applicationForB = await prisma.application.findUnique({
+      where: {
+        candidateId_vacancyId: {
+          candidateId: firstCandidateId,
+          vacancyId: vacancyB.id,
+        },
+      },
+    });
+    expect(applicationForB).not.toBeNull();
+  });
+
+  it("re-uploading the same PDF to the same vacancy twice does not create a duplicate Application", async () => {
+    const { owner, department, position } = await seedGraph();
+    const vacancy = await seedVacancy(owner.id, department.id, position.id);
+    const pdf = await makePdfBuffer(SAMPLE_CV_TEXT);
+
+    await request(app)
+      .post(`/api/vacancies/${vacancy.id}/upload`)
+      .set("Authorization", tokenFor(owner))
+      .attach("pdfs", pdf, "cv.pdf");
+    await request(app)
+      .post(`/api/vacancies/${vacancy.id}/upload`)
+      .set("Authorization", tokenFor(owner))
+      .attach("pdfs", pdf, "cv.pdf");
+
+    const applications = await prisma.application.count({
+      where: { vacancyId: vacancy.id },
+    });
+    expect(applications).toBe(1);
+  });
+
+  it("a candidate reused across vacancies becomes evaluable in the second vacancy too", async () => {
+    const { owner, department, position } = await seedGraph();
+    const vacancyA = await seedVacancy(
+      owner.id,
+      department.id,
+      position.id,
+      "ACTIVE",
+      "Vacancy A",
+    );
+    const vacancyB = await seedVacancy(
+      owner.id,
+      department.id,
+      position.id,
+      "ACTIVE",
+      "Vacancy B",
+    );
+    const pdf = await makePdfBuffer(SAMPLE_CV_TEXT);
+
+    await request(app)
+      .post(`/api/vacancies/${vacancyA.id}/upload`)
+      .set("Authorization", tokenFor(owner))
+      .attach("pdfs", pdf, "cv.pdf");
+    await request(app)
+      .post(`/api/vacancies/${vacancyB.id}/upload`)
+      .set("Authorization", tokenFor(owner))
+      .attach("pdfs", pdf, "cv.pdf");
+
+    jest.spyOn(matchEnginePrompt, "matchEngine").mockResolvedValue({
+      ...validProfile,
+      aiAnalysis: { redFlags: null, rawTextSummary: "Looks solid." },
+    } as never);
+
+    const res = await request(app)
+      .post(`/api/vacancies/${vacancyB.id}/evaluations`)
+      .set("Authorization", tokenFor(owner));
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    const persisted = await prisma.matchResult.count({
       where: { vacancyId: vacancyB.id },
     });
-    expect(countInB).toBe(0);
+    expect(persisted).toBe(1);
   });
 });

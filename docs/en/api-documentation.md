@@ -313,14 +313,16 @@ Each file is processed independently (max concurrency 5) — a failing file does
 | Cause | Result |
 |---|---|
 | Extracted text < 500 characters | `{ success: false, message: "..." }` |
-| Hash already exists (duplicate CV) | `{ success: true, data: <existing candidate> }` |
+| Hash already exists **for this user** (duplicate CV, possibly across vacancies) | `{ success: true, data: <existing candidate> }` |
 | Other processing/AI error | `{ success: false, message, error, stack }` |
+
+> **Cross-vacancy reuse (fixed 2026-07-13):** `Candidate.hash` dedup is scoped per user (`@@unique([userId, hash])`), not global. Uploading the same CV to a **different** vacancy of the same user reuses the existing `Candidate` row (no repeat OpenAI/Cloudinary call) and additionally creates/upserts an `Application(candidateId, vacancyId)` row linking it to the new vacancy — this is what makes the reused candidate show up as pending in `POST /:id/evaluations` for that vacancy too. Before this fix, the reused candidate stayed silently tied only to the vacancy of its *original* upload and could never be evaluated for any other vacancy (the request still returned `success: true`, with no visible error — see the "Known Inconsistencies" section for the incident this closes). Uploading the same CV under **two different users** no longer collides at all — each user gets their own independent `Candidate` row (hash dedup never crosses tenants).
 
 **Global errors:** `400` if no file is sent · `404` vacancy doesn't exist/doesn't belong to the user (implicit via invalid `id`) · `500`.
 
 ### `POST /api/vacancies/:id/evaluations`
 
-Runs the AI matching engine over all of the vacancy's candidates that don't yet have a `MatchResult`. No body.
+Runs the AI matching engine over every `Application` for this vacancy that doesn't yet have a `MatchResult` (**changed 2026-07-13**: previously sourced pending candidates from `Candidate.vacancyId` directly, which meant a candidate reused across vacancies via hash dedup was invisible to every vacancy except the one it was originally uploaded to). No body.
 
 **Errors:** `404` vacancy not found or no candidates pending evaluation (`400` if there are no candidates) · `500`.
 
@@ -470,9 +472,9 @@ All relationships between entities (`Position.departmentId`, `Vacancy.department
 - Any other unhandled error → `500`. In production (`NODE_ENV=production`) the message is always `"Internal server error"`, with no internal detail; in development the real message is shown for debugging.
 - The frontend **must not** parse the `error` text of a `500` to make business decisions — only for logging.
 
-### 8.5 Schema entities without an exposed endpoint
+### 8.5 `Application` — no dedicated endpoint, but active since 2026-07-13
 
-`Application` is defined in `prisma/schema.prisma` (with `ApplicationStatus`) but **has no active routes or controller** in the current API — no `/api/applications` endpoint should be assumed.
+~~`Application` is defined in `prisma/schema.prisma` (with `ApplicationStatus`) but has no active routes or controller in the current API.~~ **Partially superseded (2026-07-13):** `Application(candidateId, vacancyId)` is now written to internally by `POST /api/vacancies/:id/upload` (linking a reused candidate to a new vacancy) and read by `POST /api/vacancies/:id/evaluations` (sourcing which candidates are pending for a vacancy) — see section 4. There is still **no dedicated `/api/applications` endpoint** to read/write `Application` rows directly or inspect `ApplicationStatus`; it's purely an internal join table for now.
 
 ---
 
@@ -488,6 +490,7 @@ Documented so the frontend knows what to expect today, not an "ideal" behavior:
 5. ~~A middleware `identifyUserDemo` (`demoTrialMiddleware.js`) exists to limit demo accounts to 5 days, but is not wired to any active route.~~ **Removed (2026-07-04, #138):** the demo-account-limit middleware (`demoTrialMiddleware.js`) was deleted from the repository along with `matchRepository.js` as dead code. There is no longer any reference to demo accounts in the backend (the `DEMO_USER` environment variable is also now unused).
 6. **`GET /api/dashboard`'s `vacancyStatusBreakdown` hardcodes a `"CONTACTING"` status that doesn't exist in `VacancyStatus`** (`ACTIVE | PAUSED | CLOSED`), and omits `PAUSED` entirely — see section 7 for the full detail. Do not treat this array as an exhaustive breakdown of every vacancy status today.
 7. **No list endpoint in this API enforces a maximum page size.** The two paginated endpoints (`GET /api/vacancies/:id/results`, `GET /api/admin/users`) clamp nothing on `limit` — a large enough value returns the entire table in one response. The unpaginated list endpoints (`GET /api/departments`, `GET /api/positions`, `GET /api/vacancies`, `GET /api/candidates`) have no size limit at all by design. See section 10 for the full endpoint-by-endpoint breakdown.
+8. ~~`Candidate.hash` was globally unique (`@unique`) instead of scoped per user, which caused two separate bugs: (a) uploading the same CV to a second vacancy of the same user silently reused the existing `Candidate` without ever linking it to the new vacancy — the upload reported `success: true` but the candidate could never be evaluated for that second vacancy, and (b) two different users uploading a byte-identical PDF would have the second user's request transparently return the first user's confidential `Candidate` data (cross-tenant leak).~~ **Fixed (2026-07-13):** `Candidate.hash` is now unique per `(userId, hash)`. Reused candidates are linked to additional vacancies via `Application` (see section 8.5), and different users can now each have their own independent `Candidate` row for the same underlying CV. `GET /api/vacancies` and `GET /api/vacancies/:id` still list `candidates` by `Candidate.vacancyId` only (the vacancy of the *original* upload) — a candidate linked to a second vacancy only via `Application` won't appear in that vacancy's `candidates` array yet, even though it's now evaluable there. Tracked as a follow-up, not yet fixed.
 
 ---
 

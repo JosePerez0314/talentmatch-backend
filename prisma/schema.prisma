@@ -113,8 +113,8 @@ model Application {
   candidateId Int
   vacancyId Int
   
-  candidate Candidate @relation(fields: [candidateId], references: [id])
-  vacancy Vacancy @relation(fields: [vacancyId], references: [id])
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  vacancy Vacancy @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -167,13 +167,16 @@ model Candidate {
   technicalSkills         Json
   role                    String
   yearsOfExperience       Int
-  /// SHA-256 hash of parsed CV text. Prevents duplicate OpenAI API calls.
-  hash                    String         @unique
+  /// SHA-256 hash of parsed CV text. Prevents duplicate OpenAI API calls per user.
+  hash                    String
   /// Raw JSON payload returned by the AI for auditing.
   rawApiPayload           Json
 
   status                  CandidateStatus @default(DISPONIBLE)
   userId                  Int
+  /// The vacancy of the original upload. A candidate reused for other
+  /// vacancies (same hash, same user) is linked to those via Application —
+  /// this field does not represent every vacancy the candidate applies to.
   vacancyId               Int
   createdAt               DateTime       @default(now())
   updatedAt               DateTime       @updatedAt
@@ -182,6 +185,9 @@ model Candidate {
   user                    User           @relation(fields: [userId], references: [id])
   vacancy                 Vacancy        @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
 
+  /// Hash dedup (skip a repeat OpenAI call) is scoped per user, not global —
+  /// two different companies uploading the same PDF must never share a row.
+  @@unique([userId, hash])
   @@index([userId, createdAt])
   @@index([status])
   @@index([vacancyId])

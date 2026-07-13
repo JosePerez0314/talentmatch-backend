@@ -97,6 +97,11 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 22
           script: |
+            # Abort immediately on any failure — otherwise a broken step (e.g. a
+            # failed migration) is silently swallowed and the job still reports
+            # green because the script keeps running through to the last command.
+            set -e
+
             # 1. Move into the application directory
             cd /home/deployer/projects/talentmatch-backend
 
@@ -111,7 +116,8 @@ jobs:
             docker compose -f docker-compose.yml up -d
 
             # 5. Run Prisma database migrations inside the active Node container
-            docker compose -f docker-compose.yml exec -T backend-service-name npx prisma migrate deploy
+            # (service name must match docker-compose.yml's `api`, not a placeholder)
+            docker compose -f docker-compose.yml exec -T api npx prisma migrate deploy
 
             # 6. Prevent server disk space starvation by purging old images
             docker system prune -af
