@@ -125,6 +125,8 @@ Registers a new user and automatically creates 10 default departments for the ac
 
 No parameters. Returns all departments of the authenticated user, with `_count.positions`.
 
+**Pagination:** none. `prisma.department.findMany` has no `skip`/`take` — every department the user owns comes back in one response, always. In practice this list is small and bounded (10 seeded on signup + whatever the user creates), so it hasn't needed pagination so far.
+
 ### `POST /api/departments`
 
 | Field (body) | Type | Required | Validation |
@@ -167,6 +169,8 @@ Only `id` in params.
 ### `GET /api/positions`
 
 No parameters. Lists the user's positions (selected fields: `id, userId, departmentId, role, yearsOfExperience, technicalSkills, optionalTechnicalSkills, softSkills, languages, description, educationLevel, educationArea, createdAt` — **does not include** `positionPdfUrl` or `updatedAt`).
+
+**Pagination:** none. `prisma.position.findMany` has no `skip`/`take` — it returns **every** position the user has ever created, in one array, with no `limit`/`page` query params accepted. A user with hundreds of positions gets all of them back in a single response.
 
 ### `POST /api/positions`
 
@@ -256,6 +260,8 @@ Only `id`. `404` if it doesn't exist/doesn't belong to the user.
 
 No parameters. Includes `_count.candidates` and the full `candidates`.
 
+**Pagination:** none, on either axis. `prisma.vacancy.findMany` returns **all** of the user's vacancies with no `skip`/`take`, and for each vacancy it embeds the **complete** `candidates` array (every `Candidate` row linked to that vacancy — not just `_count`, the full records with `rawApiPayload` and all). This is the heaviest unpaginated response in the API: response size scales with vacancy count **times** candidates-per-vacancy. A vacancy with thousands of uploaded CVs makes this single response proportionally large — there is no `limit`/`page` query param to slice it.
+
 ### `POST /api/vacancies`
 
 Validates that `departmentId` belongs to the user, that the department has at least one position, and that `positionId` belongs to that department.
@@ -287,6 +293,8 @@ Paginated matching (AI) results.
 | `limit` (query) | `number` | No | 20 |
 
 **Response 200:** `{ success, data: MatchResult[], meta: { total, page, limit, totalPages } }`.
+
+> **No upper bound on `limit`:** the controller does `parseInt(req.query.limit) || 20` with no `Math.min`/clamp against a max page size. A client sending `?limit=100000` gets every `MatchResult` for that vacancy back in a single "page." Use `meta.total`/`meta.totalPages` to drive real pagination in the UI rather than assuming 20 is a hard cap.
 
 ### `POST /api/vacancies/:id/upload`
 
@@ -346,6 +354,8 @@ Only `id`. `404` if it doesn't exist/doesn't belong to the user.
 
 Lists the user's candidates (selected fields, includes `rawApiPayload`).
 
+**Pagination:** none. `prisma.candidate.findMany` returns **every** candidate ever uploaded by the user, with no `skip`/`take` and no `page`/`limit` query params. Each row also includes `rawApiPayload` (the raw JSON the AI returned per CV), which is not a small field — a user with a large candidate history gets the full history back, payload included, in one response.
+
 ### `GET /api/candidates/:id`
 
 | Parameter | Type | Required |
@@ -364,6 +374,8 @@ Lists the user's candidates (selected fields, includes `rawApiPayload`).
 
 **Platform-wide metrics** (not filtered by user, unlike the section-7 dashboard): `usersCount, candidatesCount, positionsCount, vacanciesCount, activeVacancies, closedVacancies`.
 
+Not a list — a single aggregated object (six `count()` queries run in parallel). No pagination applies; there's nothing to page through.
+
 ### `GET /api/admin/users`
 
 Paginated list of all users in the system.
@@ -374,6 +386,8 @@ Paginated list of all users in the system.
 | `limit` | `number` | No | 50 |
 
 **Response 200:** `{ success, data: { users: User[], meta: { totalCount, currentPage, totalPages } } }`.
+
+> **No upper bound on `limit`:** same pattern as vacancy results — `parseInt(req.query.limit, 10) || 50` with no clamp. `?limit=999999` returns every user in the system in one page. Sorted deterministically by `createdAt desc`, so pages don't shift between requests as long as no new user is created in between.
 
 ### `PUT /api/admin/users/:id/role`
 
@@ -422,6 +436,12 @@ No parameters.
 }
 ```
 
+**Pagination and array sizes — no `page`/`limit` params exist on this endpoint at all:**
+
+- `total`: not an array — four independent `count()`/aggregate queries, always exactly these 4 keys.
+- `vacancyStatusBreakdown`: fixed-size array, always 3 entries (one per baseline status the service hardcodes), regardless of how many vacancies the user has. **Known mismatch:** the hardcoded baseline in `dashboard.service.ts` is `["ACTIVE", "CLOSED", "CONTACTING"]`, but `VacancyStatus` in `prisma/schema.prisma` is actually `ACTIVE | PAUSED | CLOSED` — there is no `CONTACTING` status anywhere in the schema, and `PAUSED` is missing from this breakdown entirely. In practice: the `"CONTACTING"` entry always reports `count: 0, percentage: 0` (it can never match a real row), and any vacancy actually in `PAUSED` is silently excluded from the breakdown (it's still counted in `total`, just invisible here). Don't rely on this array to reconcile against every vacancy's real status until this is fixed.
+- `monthlyActivity`: **unbounded, no pagination** — one row per calendar month that has at least one event (position/CV/vacancy created) since the user's very first one, computed with a raw SQL `GROUP BY DATE_FORMAT(createdAt, '%Y-%m')`, ascending. For a multi-year-old account this array only grows; there is no `from`/`to` range filter and no cap on how many months are returned.
+
 ---
 
 ## 8. Integration Contracts (Business Rules)
@@ -466,6 +486,30 @@ Documented so the frontend knows what to expect today, not an "ideal" behavior:
 3. **File type/size errors in Multer have no `statusCode` assigned** (`multerConfig` throws a generic `Error`), so today they fall into the global handler's `500` branch instead of `400`, in `POST /positions/complete` and `POST /vacancies/:id/upload`.
 4. **`GET /api/admin/stats` is global** (all platform users), while `GET /api/dashboard` is per-user — do not confuse them as the same source of truth.
 5. ~~A middleware `identifyUserDemo` (`demoTrialMiddleware.js`) exists to limit demo accounts to 5 days, but is not wired to any active route.~~ **Removed (2026-07-04, #138):** the demo-account-limit middleware (`demoTrialMiddleware.js`) was deleted from the repository along with `matchRepository.js` as dead code. There is no longer any reference to demo accounts in the backend (the `DEMO_USER` environment variable is also now unused).
+6. **`GET /api/dashboard`'s `vacancyStatusBreakdown` hardcodes a `"CONTACTING"` status that doesn't exist in `VacancyStatus`** (`ACTIVE | PAUSED | CLOSED`), and omits `PAUSED` entirely — see section 7 for the full detail. Do not treat this array as an exhaustive breakdown of every vacancy status today.
+7. **No list endpoint in this API enforces a maximum page size.** The two paginated endpoints (`GET /api/vacancies/:id/results`, `GET /api/admin/users`) clamp nothing on `limit` — a large enough value returns the entire table in one response. The unpaginated list endpoints (`GET /api/departments`, `GET /api/positions`, `GET /api/vacancies`, `GET /api/candidates`) have no size limit at all by design. See section 10 for the full endpoint-by-endpoint breakdown.
+
+---
+
+## 10. Pagination & List Sizes — Quick Reference
+
+Consolidated answer to "how much does each `GET` actually return?" — see each endpoint's own section above for the full detail.
+
+| Endpoint | Returns | Paginated? | Default page size | Enforced max |
+| --- | --- | --- | --- | --- |
+| `GET /api/departments` | ALL departments of the user | No | — | — |
+| `GET /api/positions` | ALL positions of the user | No | — | — |
+| `GET /api/positions/:id` | Single record | N/A | — | — |
+| `GET /api/vacancies` | ALL vacancies of the user, each with its **full** `candidates` array embedded | No | — | — |
+| `GET /api/vacancies/:id` | Single record | N/A | — | — |
+| `GET /api/vacancies/:id/results` | `MatchResult[]` for one vacancy | Yes (`page`/`limit`) | `page=1`, `limit=20` | **None** — `limit` is not clamped |
+| `GET /api/candidates` | ALL candidates of the user (incl. `rawApiPayload`) | No | — | — |
+| `GET /api/candidates/:id` | Single record | N/A | — | — |
+| `GET /api/admin/stats` | Single aggregated object, platform-wide | N/A (not a list) | — | — |
+| `GET /api/admin/users` | `User[]`, platform-wide | Yes (`page`/`limit`) | `page=1`, `limit=50` | **None** — `limit` is not clamped |
+| `GET /api/dashboard` | `total` (single object) + `vacancyStatusBreakdown` (fixed 3 rows) + `monthlyActivity` (1 row per active calendar month, grows with account age) | No | — | — |
+
+**Practical takeaway for frontend consumers:** if a user account accumulates a large number of positions, vacancies, or candidates, the four "No" rows above will return the entire dataset in a single response with no way to request a slice — plan client-side rendering (virtualization, lazy sections) accordingly rather than assuming the backend will ever hand back a small page. For the two paginated endpoints, don't hardcode the default page size as a hard ceiling either, since a caller (or a future bug) can request an unbounded `limit`.
 
 ---
 
