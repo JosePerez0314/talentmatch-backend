@@ -258,7 +258,7 @@ Solo `id`. `404` si no existe/no pertenece al usuario.
 
 ### `GET /api/vacancies`
 
-Sin parámetros. Incluye `_count.candidates` y `candidates` completos.
+Sin parámetros. Incluye `_count.candidates`, `candidates` completos, y `position: { id, role }` (**corregido 2026-07-13**: antes la respuesta solo traía el FK crudo `positionId`, sin datos anidados de la posición — el frontend no tenía forma de mostrar el rol de la posición sin una segunda request).
 
 **Paginación:** ninguna, en ningún eje. `prisma.vacancy.findMany` devuelve **todas** las vacantes del usuario sin `skip`/`take`, y por cada vacante incrusta el array **completo** de `candidates` (cada registro `Candidate` vinculado a esa vacante — no solo `_count`, sino los registros completos con `rawApiPayload` incluido). Es la respuesta sin paginar más pesada de toda la API: el tamaño de la respuesta escala con la cantidad de vacantes **multiplicada** por candidatos-por-vacante. Una vacante con miles de CVs subidos hace que esta única respuesta crezca proporcionalmente — no existe parámetro `limit`/`page` para recortarla.
 
@@ -280,7 +280,7 @@ Valida que `departmentId` pertenezca al usuario, que el departamento tenga al me
 
 ### `GET /api/vacancies/:id`
 
-`404` si no existe/no pertenece al usuario.
+`404` si no existe/no pertenece al usuario. Incluye también `position: { id, role }` (**corregido 2026-07-13**, mismo fix que el endpoint de lista de arriba — este endpoint de un solo registro antes omitía `position` por completo, ni siquiera el FK).
 
 ### `GET /api/vacancies/:id/results`
 
@@ -500,7 +500,7 @@ Respuesta consolidada a "¿cuánto devuelve realmente cada `GET`?" — ver la se
 | `GET /api/departments` | TODOS los departamentos del usuario | No | — | — |
 | `GET /api/positions` | TODAS las posiciones del usuario | No | — | — |
 | `GET /api/positions/:id` | Un solo registro | N/A | — | — |
-| `GET /api/vacancies` | TODAS las vacantes del usuario, cada una con su array **completo** de `candidates` incrustado | No | — | — |
+| `GET /api/vacancies` | TODAS las vacantes del usuario, cada una con su array **completo** de `candidates` y `position: { id, role }` incrustados | No | — | — |
 | `GET /api/vacancies/:id` | Un solo registro | N/A | — | — |
 | `GET /api/vacancies/:id/results` | `MatchResult[]` de una vacante | Sí (`page`/`limit`) | `page=1`, `limit=20` | **Ninguno** — `limit` no tiene clamp |
 | `GET /api/candidates` | TODOS los candidatos del usuario (incl. `rawApiPayload`) | No | — | — |

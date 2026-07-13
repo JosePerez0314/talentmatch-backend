@@ -258,7 +258,7 @@ Only `id`. `404` if it doesn't exist/doesn't belong to the user.
 
 ### `GET /api/vacancies`
 
-No parameters. Includes `_count.candidates` and the full `candidates`.
+No parameters. Includes `_count.candidates`, the full `candidates`, and `position: { id, role }` (**fixed 2026-07-13**: previously the response only carried the raw `positionId` FK, with no nested position data — the frontend had no way to display the position's role without a second request).
 
 **Pagination:** none, on either axis. `prisma.vacancy.findMany` returns **all** of the user's vacancies with no `skip`/`take`, and for each vacancy it embeds the **complete** `candidates` array (every `Candidate` row linked to that vacancy — not just `_count`, the full records with `rawApiPayload` and all). This is the heaviest unpaginated response in the API: response size scales with vacancy count **times** candidates-per-vacancy. A vacancy with thousands of uploaded CVs makes this single response proportionally large — there is no `limit`/`page` query param to slice it.
 
@@ -280,7 +280,7 @@ Validates that `departmentId` belongs to the user, that the department has at le
 
 ### `GET /api/vacancies/:id`
 
-`404` if it doesn't exist/doesn't belong to the user.
+`404` if it doesn't exist/doesn't belong to the user. Also includes `position: { id, role }` (**fixed 2026-07-13**, same fix as the list endpoint above — this single-record endpoint previously omitted `position` entirely, not even the FK-only shape).
 
 ### `GET /api/vacancies/:id/results`
 
@@ -500,7 +500,7 @@ Consolidated answer to "how much does each `GET` actually return?" — see each 
 | `GET /api/departments` | ALL departments of the user | No | — | — |
 | `GET /api/positions` | ALL positions of the user | No | — | — |
 | `GET /api/positions/:id` | Single record | N/A | — | — |
-| `GET /api/vacancies` | ALL vacancies of the user, each with its **full** `candidates` array embedded | No | — | — |
+| `GET /api/vacancies` | ALL vacancies of the user, each with its **full** `candidates` array and `position: { id, role }` embedded | No | — | — |
 | `GET /api/vacancies/:id` | Single record | N/A | — | — |
 | `GET /api/vacancies/:id/results` | `MatchResult[]` for one vacancy | Yes (`page`/`limit`) | `page=1`, `limit=20` | **None** — `limit` is not clamped |
 | `GET /api/candidates` | ALL candidates of the user (incl. `rawApiPayload`) | No | — | — |

@@ -150,6 +150,9 @@ export const getAllVacancies = async (
     },
     select: {
       ...vacanciesSelectObject,
+      position: {
+        select: { id: true, role: true },
+      },
       _count: {
         select: { candidates: true },
       },
@@ -418,6 +421,9 @@ export const getOneVacancy: VacancyController = async (req, res, next) => {
     },
     select: {
       ...vacanciesSelectObject,
+      position: {
+        select: { id: true, role: true },
+      },
     },
   });
 
