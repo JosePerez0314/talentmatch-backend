@@ -313,14 +313,16 @@ Se procesa cada archivo de forma independiente (concurrencia máx. 5) — un arc
 | Causa | Resultado |
 |---|---|
 | Texto extraído < 500 caracteres | `{ success: false, message: "..." }` |
-| Hash ya existe (CV duplicado) | `{ success: true, data: <candidato existente> }` |
+| Hash ya existe **para este usuario** (CV duplicado, posiblemente entre vacantes) | `{ success: true, data: <candidato existente> }` |
 | Otro error de procesamiento/IA | `{ success: false, message, error, stack }` |
+
+> **Reutilización entre vacantes (corregido 2026-07-13):** la deduplicación por `Candidate.hash` está scoped por usuario (`@@unique([userId, hash])`), no es global. Subir el mismo CV a una vacante **distinta** del mismo usuario reutiliza el registro `Candidate` existente (sin repetir la llamada a OpenAI/Cloudinary) y además crea/actualiza (`upsert`) un registro `Application(candidateId, vacancyId)` que lo vincula a la nueva vacante — esto es lo que hace que el candidato reutilizado aparezca como pendiente en `POST /:id/evaluations` también para esa vacante. Antes de este fix, el candidato reutilizado quedaba silenciosamente atado solo a la vacante de su subida *original* y nunca podía evaluarse para ninguna otra vacante (la request igual devolvía `success: true`, sin ningún error visible — ver la sección de "Inconsistencias Conocidas" para el incidente que esto cierra). Subir el mismo CV bajo **dos usuarios distintos** ya no choca en absoluto — cada usuario obtiene su propio registro `Candidate` independiente (la deduplicación por hash nunca cruza entre tenants).
 
 **Errores globales:** `400` si no se envía ningún archivo · `404` vacante no existe/no pertenece al usuario (implícito por `id` inválido) · `500`.
 
 ### `POST /api/vacancies/:id/evaluations`
 
-Ejecuta el motor de matching IA sobre todos los candidatos de la vacante que aún no tengan `MatchResult`. Sin body.
+Ejecuta el motor de matching IA sobre cada `Application` de esta vacante que aún no tenga un `MatchResult` (**cambiado 2026-07-13**: antes obtenía los candidatos pendientes directamente de `Candidate.vacancyId`, lo que significaba que un candidato reutilizado entre vacantes vía deduplicación por hash era invisible para cualquier vacante excepto aquella a la que se subió originalmente). Sin body.
 
 **Errores:** `404` vacante no encontrada o sin candidatos pendientes de evaluar (`400` si no hay candidatos) · `500`.
 
@@ -470,9 +472,9 @@ Todas las relaciones entre entidades (`Position.departmentId`, `Vacancy.departme
 - Cualquier otro error no controlado → `500`. En producción (`NODE_ENV=production`) el mensaje siempre es `"Internal server error"`, sin detalle interno; en desarrollo se muestra el mensaje real para debugging.
 - El frontend **no debe** parsear el texto de `error` en un `500` para tomar decisiones de negocio — solo para logging.
 
-### 8.5 Entidades del schema sin endpoint expuesto
+### 8.5 `Application` — sin endpoint dedicado, pero activa desde 2026-07-13
 
-`Application` está definida en `prisma/schema.prisma` (con `ApplicationStatus`) pero **no tiene rutas ni controlador activos** en la API actual — no debe asumirse ningún endpoint `/api/applications`.
+~~`Application` está definida en `prisma/schema.prisma` (con `ApplicationStatus`) pero no tiene rutas ni controlador activos en la API actual.~~ **Parcialmente superado (2026-07-13):** `Application(candidateId, vacancyId)` ahora se escribe internamente desde `POST /api/vacancies/:id/upload` (vinculando un candidato reutilizado a una nueva vacante) y se lee desde `POST /api/vacancies/:id/evaluations` (para saber qué candidatos están pendientes en una vacante) — ver sección 4. Sigue sin existir un endpoint dedicado `/api/applications` para leer/escribir registros `Application` directamente o inspeccionar `ApplicationStatus`; por ahora es puramente una tabla de unión interna.
 
 ---
 
@@ -488,6 +490,7 @@ Documentado para que el frontend sepa a qué atenerse hoy, no a un comportamient
 5. ~~Existe un middleware `identifyUserDemo` (`demoTrialMiddleware.js`) para limitar cuentas demo a 5 días, pero no está enlazado a ninguna ruta activa.~~ **Eliminado (2026-07-04, #138):** el middleware de límite de cuentas demo (`demoTrialMiddleware.js`) fue borrado del repositorio junto con `matchRepository.js` por tratarse de código muerto. Ya no existe ninguna referencia a cuentas demo en el backend (la variable de entorno `DEMO_USER` quedó también sin uso).
 6. **`GET /api/dashboard` hardcodea en `vacancyStatusBreakdown` un status `"CONTACTING"` que no existe en `VacancyStatus`** (`ACTIVE | PAUSED | CLOSED`), y omite `PAUSED` por completo — ver detalle completo en la sección 7. No tratar este array como un desglose exhaustivo del status real de cada vacante hoy en día.
 7. **Ningún endpoint de listado de esta API impone un tamaño máximo de página.** Los dos endpoints paginados (`GET /api/vacancies/:id/results`, `GET /api/admin/users`) no hacen ningún clamp sobre `limit` — un valor suficientemente grande devuelve toda la tabla en una sola respuesta. Los endpoints de listado sin paginar (`GET /api/departments`, `GET /api/positions`, `GET /api/vacancies`, `GET /api/candidates`) no tienen ningún límite de tamaño, por diseño. Ver sección 10 para el detalle completo endpoint por endpoint.
+8. ~~`Candidate.hash` era único a nivel global (`@unique`) en vez de estar scoped por usuario, lo que causaba dos bugs distintos: (a) subir el mismo CV a una segunda vacante del mismo usuario reutilizaba silenciosamente el `Candidate` existente sin nunca vincularlo a la nueva vacante — la subida reportaba `success: true` pero el candidato jamás podía evaluarse para esa segunda vacante, y (b) dos usuarios distintos subiendo un PDF byte-idéntico hacían que la request del segundo usuario devolviera transparentemente los datos confidenciales del `Candidate` del primero (fuga entre tenants).~~ **Corregido (2026-07-13):** `Candidate.hash` ahora es único por `(userId, hash)`. Los candidatos reutilizados se vinculan a vacantes adicionales vía `Application` (ver sección 8.5), y dos usuarios distintos ya pueden tener cada uno su propio registro `Candidate` independiente para el mismo CV subyacente. `GET /api/vacancies` y `GET /api/vacancies/:id` todavía listan `candidates` según `Candidate.vacancyId` únicamente (la vacante de la subida *original*) — un candidato vinculado a una segunda vacante solo vía `Application` todavía no aparece en el array `candidates` de esa vacante, aunque ya sea evaluable ahí. Queda pendiente como follow-up, no corregido todavía.
 
 ---
 
