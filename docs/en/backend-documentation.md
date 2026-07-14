@@ -139,7 +139,7 @@ src/
 
 prisma/
 ├── schema.prisma        # Data model (MySQL)
-├── migrations/          # Migration history (11 migrations)
+├── migrations/          # Migration history (12 migrations)
 └── seed.ts              # Seeds admin@admin.ai / Admin123 + default departments
 
 scripts/
@@ -148,7 +148,7 @@ scripts/
 
 ## 6. Domain model & database schema
 
-The schema lives in `prisma/schema.prisma` (MySQL). Six models and five enums.
+The schema lives in `prisma/schema.prisma` (MySQL). Seven models and five enums.
 
 ### Enums
 
@@ -166,9 +166,9 @@ The schema lives in `prisma/schema.prisma` (MySQL). Six models and five enums.
 - **`Department`** — groups positions under a business unit. `@@unique([title, userId])` (a title is unique per tenant), indexed by `userId`.
 - **`Position`** — the job-requirements baseline the AI evaluates candidates against: `role`, `yearsOfExperience` (Int, `≥ 0`), `description` (Text), skill arrays stored as **JSON** (`technicalSkills`, `optionalTechnicalSkills`, `softSkills`, `languages`), `educationLevel` (enum), `educationArea`, and an optional `positionPdfUrl` (Cloudinary). **`department` relation is `onDelete: Cascade`** — deleting a Department cascades to its Positions (see [§20](#20-known-issues--conventions)).
 - **`Vacancy`** — an active opening tied to a Position: `title`, `availableSlots`, `startDate`/`endDate`, `status` (default `ACTIVE`). Cascades on Position delete and User delete.
-- **`Candidate`** — a CV parsed from a PDF: identity + the same structured skill/experience/education fields as a Position, plus `fileUrl` (Cloudinary), a **unique `hash`** (SHA-256 of the CV, for dedup), and `rawApiPayload` (the raw AI JSON, kept for auditing). `status` defaults to `DISPONIBLE`.
+- **`Candidate`** — a CV parsed from a PDF: identity + the same structured skill/experience/education fields as a Position, plus `fileUrl` (Cloudinary), a `hash` (SHA-256 of the CV, for dedup) **unique per user** (`@@unique([userId, hash])` — two different tenants uploading the same PDF byte-for-byte get independent rows), and `rawApiPayload` (the raw AI JSON, kept for auditing). `status` defaults to `DISPONIBLE`. `vacancyId` only reflects the vacancy of the *original* upload — a candidate reused for other vacancies (same hash, same user) is linked to those via `Application`, not by changing this field.
 - **`MatchResult`** — the deterministic evaluation joining a Candidate to a Vacancy. Stores the total `matchScore` plus a per-criterion breakdown (`hardSkillsScore`, `experienceScore`, `roleScore`, `languagesScore`, `educationScore`, `softSkillsScore`), a `normalizedCandidate` JSON snapshot (frozen at evaluation time for auditability), a `summary`, and optional `redFlags`. **`@@unique([candidateId, vacancyId])`** — a candidate has at most one evaluation per vacancy.
-- **`Application`** — defined in the schema (with `ApplicationStatus`) but **has no active routes or controller**. Do not assume an `/api/applications` endpoint exists.
+- **`Application`** — join table linking a Candidate to a Vacancy it applied to (`status: ApplicationStatus`, `@@unique([candidateId, vacancyId])`, relations to `Candidate`/`Vacancy` are `onDelete: Cascade`). Actively written by the upload pipeline (see [§11](#11-the-cv-processing-pipeline)) and read by `POST /api/vacancies/:id/evaluations` to source pending candidates — it is no longer dormant. There is still **no dedicated `/api/applications` CRUD endpoint**; `ApplicationStatus` is only exposed read-only, nested under `candidate` in `GET /api/vacancies/:id/results`.
 
 ### Indexing strategy
 
@@ -253,15 +253,15 @@ and its 404 case returns `{ "success": false, "error": "<Entity> not found" }`. 
 
 Triggered by `POST /api/vacancies/:id/upload` (`multipart/form-data`, field `pdfs`, up to 100 files, max 5MB each, `application/pdf` only). Each file is processed **independently with a concurrency cap of 5** (`p-limit(5)`) — one failing file never blocks the batch. For each PDF:
 
-1. **Dedup first (SHA-256).** `findExistingCandidateByCv` hashes the raw PDF buffer and looks up an existing `Candidate` by `hash`. If found, the pipeline **short-circuits** and returns the existing candidate — no text extraction, no OpenAI call, no Cloudinary upload.
+1. **Dedup first (SHA-256), scoped per user.** `findExistingCandidateByCv` hashes the raw PDF buffer and looks up an existing `Candidate` by `hash` **and `userId`** (dedup never crosses tenants). If found, the pipeline **short-circuits** — no text extraction, no OpenAI call, no Cloudinary upload — and upserts an `Application(candidateId, vacancyId)` row linking the existing candidate to the requested vacancy, so a candidate reused across vacancies becomes evaluable in every vacancy it's uploaded to, not just the first.
 2. **Text extraction.** `extract()` (from `src/lib/pdfWrapper.ts`) runs `pdf-parse`. The wrapper adds a **bounded retry (up to 6 attempts, 50ms apart)** because `pdf-parse` is non-deterministic in tight in-process bursts (intermittent "bad XRef entry" on valid PDFs); a genuinely corrupt PDF still fails every attempt and rethrows unchanged.
 3. **Quality gate.** If the extracted text is `< 500` characters (scanned/corrupt/illegible), the file is rejected with an error entry — without blocking the rest of the batch.
 4. **AI extraction.** The text is sent to OpenAI, which returns a structured candidate profile.
 5. **Non-CV rejection.** `assertCandidateIsCv` (`candidateValidation.service.ts`) rejects the file if the AI returned an **all-blank profile** (empty text fields, `educationLevel NONE`, no skills, `yearsOfExperience 0`) — i.e. the PDF was not a resume — **before** spending a Cloudinary upload. A real CV missing a single field is never rejected (all meaningful fields must be blank).
 6. **Cloudinary upload.** The original PDF is stored; the URL is saved on the candidate.
-7. **Persistence.** A `Candidate` row is created with the structured profile, the `hash`, the Cloudinary URL and the raw AI JSON (`rawApiPayload`). A race that inserts a duplicate hash is caught (`P2002`) and resolves to the existing candidate.
+7. **Persistence.** A `Candidate` row is created with the structured profile, the `hash`, the Cloudinary URL and the raw AI JSON (`rawApiPayload`), and an `Application(candidateId, vacancyId)` row is created linking it to this vacancy. A race that inserts a duplicate `(userId, hash)` is caught (`P2002`) and resolves to the existing candidate (also upserting its `Application` row for this vacancy).
 
-**Evaluation is a separate, explicit step** (`POST /api/vacancies/:id/evaluations`): it runs the matching engine over the vacancy's candidates that don't yet have a `MatchResult`, again with `p-limit(5)`.
+**Evaluation is a separate, explicit step** (`POST /api/vacancies/:id/evaluations`): it runs the matching engine over the vacancy's pending `Application` rows (candidates without a `MatchResult` for that vacancy yet) — not `Candidate.vacancyId` directly — so a candidate reused across vacancies is evaluated for each one it applied to, again with `p-limit(5)`.
 
 ## 12. AI integration (OpenAI)
 
@@ -397,7 +397,7 @@ On the VPS **everything runs containerized** (backend + MySQL via `docker-compos
 - **`Department` delete cascades:** `Position.department` is `onDelete: Cascade`, so deleting a Department deletes its Positions instead of being blocked. Making deletion blocking would require an `onDelete: Restrict` schema change + a new migration.
 - **Response-shape inconsistency:** `sendResponseOr404` double-wraps success as `{ response: { success, data } }`; the rest return `{ success, data }`. Tracked, not yet unified.
 - **Multer errors surface as `500`:** a file-type/size/count violation throws a generic `Error`/`MulterError` with no `statusCode`, so the global handler falls through to `500` rather than a clean `4xx`. The limit *is* enforced; only the status code is imperfect.
-- **`Application` model is dormant:** present in the schema, no routes/controller.
+- **`Application` model has no dedicated CRUD endpoint:** actively written/read internally by the upload and evaluation pipeline (see [§11](#11-the-cv-processing-pipeline)) and exposed read-only (nested `ApplicationStatus`) via `GET /api/vacancies/:id/results`, but there is no `/api/applications` route to manage it directly.
 - **English-only code comments:** all inline/block/JSDoc comments must be in English, regardless of the working language (project convention).
 - **No `any` in TypeScript:** strict typing is enforced; the codebase is mid-migration from JS to TS.
 

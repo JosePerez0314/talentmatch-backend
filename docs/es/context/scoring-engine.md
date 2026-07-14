@@ -30,7 +30,7 @@ El motor de matching evalúa a un candidato contra una vacante usando una funci�
   - Ratio estándar aplicado en otro caso.
 - **Rol (15%):** chequeo binario. Un match exacto de string da 15 puntos; si no, 0.
 - **Idiomas (15%):** calculado vía ratio lineal.
-- **Educación (10%):** escala de umbral binario (`none` a `phd`). Si el nivel del candidato ≥ el nivel de la posición, 10 puntos; si no, 0.
+- **Educación (10%):** escala de umbral (`none` a `phd`). 10 puntos completos si la posición no requiere un nivel mínimo, o si el nivel del candidato lo iguala o supera; si no, un puntaje **proporcional** (`nivelCandidato / nivelPosición * 10`), no un 0 plano.
 - **Soft Skills (10%):** calculado vía ratio lineal.
 
 *Nota: este algoritmo opera estrictamente sobre la salida JSON provista por la fase de extracción por IA, asegurando que el ranking en sí sea matemático y no alucinado.*

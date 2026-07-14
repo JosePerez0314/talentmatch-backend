@@ -30,11 +30,15 @@ The system uses MySQL as the underlying database. The architecture strictly enfo
 
 \* \*\*Position:\*\* The baseline job requirements, storing strict criteria like `yearsOfExperience` and unstructured arrays inside JSON fields for `technicalSkills` and `softSkills`.
 
-\* \*\*Candidate:\*\* The AI-parsed applicant profile. Contains a unique `hash` of the CV text to prevent duplicate LLM processing. Stores the full `rawApiPayload` as JSON for auditing.
+\* \*\*Candidate:\*\* The AI-parsed applicant profile. Contains a `hash` of the CV text, unique per user (`@@unique(\[userId, hash])`), to prevent duplicate LLM processing without leaking a candidate across tenants. Stores the full `rawApiPayload` as JSON for auditing.
 
 \* \*\*Vacancy:\*\* An active job posting linked to a Position. Tracked via a `VacancyStatus` enum (`OPEN`, `CONTACTING`, `FILLED`).
 
 \* \*\*MatchResult:\*\* The junction table storing the deterministic math score. A candidate can only have one evaluation score per vacancy, enforced by a unique composite key (`@@unique(\[candidateId, vacancyId])`). It caches the `normalizedCandidate` JSON snapshot at the time of evaluation for auditability.
+
+
+
+\> \*\*Note:\*\* this file is an AI persona/context prompt used to steer an assistant working on the data layer. The authoritative reference for the real schema lives in `prisma/schema.prisma` and in \[`../backend-documentation.md`](../backend-documentation.md) (§6). The real `VacancyStatus` enum is `ACTIVE`, `PAUSED`, `CLOSED` (the `OPEN`/`CONTACTING`/`FILLED` values mentioned above are illustrative for the prompt, not the current schema).
 
 
 
