@@ -292,7 +292,7 @@ Paginated matching (AI) results.
 | `page` (query) | `number` | No | 1 |
 | `limit` (query) | `number` | No | 20 |
 
-**Response 200:** `{ success, data: MatchResult[], meta: { total, page, limit, totalPages } }`.
+**Response 200:** `{ success, data: MatchResult[], meta: { total, page, limit, totalPages } }`. Each `MatchResult` includes the full score breakdown (`hardSkillsScore`, `experienceScore`, `roleScore`, `languagesScore`, `educationScore`, `softSkillsScore`), the frozen `normalizedCandidate` snapshot, `summary`, `redFlags`, and a nested `candidate: { id, fullName, email, fileUrl, applications: [{ status }] }` — this is currently the only place `ApplicationStatus` is exposed to a client (read-only, no dedicated `/api/applications` endpoint — see §8.5).
 
 > **No upper bound on `limit`:** the controller does `parseInt(req.query.limit) || 20` with no `Math.min`/clamp against a max page size. A client sending `?limit=100000` gets every `MatchResult` for that vacancy back in a single "page." Use `meta.total`/`meta.totalPages` to drive real pagination in the UI rather than assuming 20 is a hard cap.
 
@@ -474,7 +474,7 @@ All relationships between entities (`Position.departmentId`, `Vacancy.department
 
 ### 8.5 `Application` — no dedicated endpoint, but active since 2026-07-13
 
-~~`Application` is defined in `prisma/schema.prisma` (with `ApplicationStatus`) but has no active routes or controller in the current API.~~ **Partially superseded (2026-07-13):** `Application(candidateId, vacancyId)` is now written to internally by `POST /api/vacancies/:id/upload` (linking a reused candidate to a new vacancy) and read by `POST /api/vacancies/:id/evaluations` (sourcing which candidates are pending for a vacancy) — see section 4. There is still **no dedicated `/api/applications` endpoint** to read/write `Application` rows directly or inspect `ApplicationStatus`; it's purely an internal join table for now.
+~~`Application` is defined in `prisma/schema.prisma` (with `ApplicationStatus`) but has no active routes or controller in the current API.~~ **Partially superseded (2026-07-13):** `Application(candidateId, vacancyId)` is now written to internally by `POST /api/vacancies/:id/upload` (linking a reused candidate to a new vacancy) and read by `POST /api/vacancies/:id/evaluations` (sourcing which candidates are pending for a vacancy) — see section 4. There is still **no dedicated `/api/applications` endpoint** to read/write `Application` rows directly, but `ApplicationStatus` is no longer fully hidden: `GET /api/vacancies/:id/results` exposes it read-only, nested as `candidate.applications[0].status` (see section 4). Writing/updating `Application` rows directly still has no route.
 
 ---
 

@@ -24,7 +24,7 @@ The matching engine evaluates a candidate against a vacancy using a deterministi
   * Standard ratio applied otherwise.
 * **Role (15%):** Binary check. Exact string match yields 15 points; otherwise, 0.
 * **Languages (15%):** Calculated via linear ratio.
-* **Education (10%):** Binary threshold scale (`none` to `phd`). If candidate level $\ge$ position level, 10 points; otherwise, 0.
+* **Education (10%):** Threshold scale (`none` to `phd`). Full 10 points if the position requires no minimum level, or if the candidate's level meets or exceeds it; otherwise a **proportional** score (`candidateLevel / positionLevel * 10`), not a flat 0.
 * **Soft Skills (10%):** Calculated via linear ratio.
 
 *Note: This algorithm operates strictly on the JSON output provided by the AI extraction phase, ensuring the ranking itself is math-based and not hallucinated.*

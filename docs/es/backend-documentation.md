@@ -139,7 +139,7 @@ src/
 
 prisma/
 ├── schema.prisma        # Modelo de datos (MySQL)
-├── migrations/          # Historial de migraciones (11 migraciones)
+├── migrations/          # Historial de migraciones (12 migraciones)
 └── seed.ts              # Siembra admin@admin.ai / Admin123 + departamentos default
 
 scripts/
@@ -148,7 +148,7 @@ scripts/
 
 ## 6. Modelo de dominio y esquema de base de datos
 
-El esquema vive en `prisma/schema.prisma` (MySQL). Seis modelos y cinco enums.
+El esquema vive en `prisma/schema.prisma` (MySQL). Siete modelos y cinco enums.
 
 ### Enums
 
@@ -166,9 +166,9 @@ El esquema vive en `prisma/schema.prisma` (MySQL). Seis modelos y cinco enums.
 - **`Department`** — agrupa posiciones bajo una unidad de negocio. `@@unique([title, userId])` (el título es único por tenant), indexado por `userId`.
 - **`Position`** — la línea base de requisitos que la IA usa para evaluar candidatos: `role`, `yearsOfExperience` (Int, `≥ 0`), `description` (Text), arrays de skills almacenados como **JSON** (`technicalSkills`, `optionalTechnicalSkills`, `softSkills`, `languages`), `educationLevel` (enum), `educationArea` y un `positionPdfUrl` opcional (Cloudinary). **La relación `department` es `onDelete: Cascade`** — borrar un Departamento cascadea a sus Posiciones (ver [§20](#20-problemas-conocidos-y-convenciones)).
 - **`Vacancy`** — una apertura activa ligada a una Posición: `title`, `availableSlots`, `startDate`/`endDate`, `status` (default `ACTIVE`). Cascadea al borrar la Posición y al borrar el Usuario.
-- **`Candidate`** — un CV parseado desde un PDF: identidad + los mismos campos estructurados de skills/experiencia/educación que una Posición, más `fileUrl` (Cloudinary), un **`hash` único** (SHA-256 del CV, para dedup) y `rawApiPayload` (el JSON crudo de la IA, conservado para auditoría). `status` por defecto es `DISPONIBLE`.
+- **`Candidate`** — un CV parseado desde un PDF: identidad + los mismos campos estructurados de skills/experiencia/educación que una Posición, más `fileUrl` (Cloudinary), un `hash` (SHA-256 del CV, para dedup) **único por usuario** (`@@unique([userId, hash])` — dos tenants distintos subiendo el mismo PDF byte a byte obtienen filas independientes) y `rawApiPayload` (el JSON crudo de la IA, conservado para auditoría). `status` por defecto es `DISPONIBLE`. `vacancyId` solo refleja la vacante de la subida *original* — un candidato reusado para otras vacantes (mismo hash, mismo usuario) se enlaza a ellas vía `Application`, no cambiando este campo.
 - **`MatchResult`** — la evaluación determinística que une un Candidato con una Vacante. Guarda el `matchScore` total más un desglose por criterio (`hardSkillsScore`, `experienceScore`, `roleScore`, `languagesScore`, `educationScore`, `softSkillsScore`), un snapshot JSON `normalizedCandidate` (congelado al momento de la evaluación para auditabilidad), un `summary` y `redFlags` opcionales. **`@@unique([candidateId, vacancyId])`** — un candidato tiene como máximo una evaluación por vacante.
-- **`Application`** — está definido en el esquema (con `ApplicationStatus`) pero **no tiene rutas ni controlador activos**. No asumir que existe un endpoint `/api/applications`.
+- **`Application`** — tabla de unión que enlaza un Candidato con una Vacante a la que aplicó (`status: ApplicationStatus`, `@@unique([candidateId, vacancyId])`, relaciones a `Candidate`/`Vacancy` son `onDelete: Cascade`). Escrita activamente por el pipeline de subida (ver [§11](#11-el-pipeline-de-procesamiento-de-cvs)) y leída por `POST /api/vacancies/:id/evaluations` para obtener los candidatos pendientes — ya no está latente. Sigue sin existir un endpoint CRUD dedicado `/api/applications`; `ApplicationStatus` solo se expone en modo lectura, anidado bajo `candidate` en `GET /api/vacancies/:id/results`.
 
 ### Estrategia de indexación
 
@@ -253,15 +253,15 @@ y su caso 404 devuelve `{ "success": false, "error": "<Entidad> not found" }`. E
 
 Disparado por `POST /api/vacancies/:id/upload` (`multipart/form-data`, campo `pdfs`, hasta 100 archivos, máx. 5MB cada uno, solo `application/pdf`). Cada archivo se procesa **de forma independiente con un tope de concurrencia de 5** (`p-limit(5)`) — un archivo que falla nunca bloquea el lote. Para cada PDF:
 
-1. **Dedup primero (SHA-256).** `findExistingCandidateByCv` hashea el buffer crudo del PDF y busca un `Candidate` existente por `hash`. Si lo encuentra, el pipeline **corta en corto** y devuelve el candidato existente — sin extracción de texto, sin llamada a OpenAI, sin subida a Cloudinary.
+1. **Dedup primero (SHA-256), acotado por usuario.** `findExistingCandidateByCv` hashea el buffer crudo del PDF y busca un `Candidate` existente por `hash` **y `userId`** (el dedup nunca cruza tenants). Si lo encuentra, el pipeline **corta en corto** — sin extracción de texto, sin llamada a OpenAI, sin subida a Cloudinary — y hace upsert de una fila `Application(candidateId, vacancyId)` que enlaza el candidato existente con la vacante solicitada, de modo que un candidato reusado entre vacantes queda evaluable en cada vacante en la que se suba, no solo en la primera.
 2. **Extracción de texto.** `extract()` (de `src/lib/pdfWrapper.ts`) ejecuta `pdf-parse`. El wrapper agrega un **retry acotado (hasta 6 intentos, con 50ms de separación)** porque `pdf-parse` es no determinístico en ráfagas apretadas dentro del mismo proceso (intermitente "bad XRef entry" en PDFs válidos); un PDF genuinamente corrupto igual falla en todos los intentos y se relanza sin cambios.
 3. **Compuerta de calidad.** Si el texto extraído tiene `< 500` caracteres (escaneado/corrupto/ilegible), el archivo se rechaza con una entrada de error — sin bloquear el resto del lote.
 4. **Extracción por IA.** El texto se envía a OpenAI, que devuelve un perfil de candidato estructurado.
 5. **Rechazo de no-CV.** `assertCandidateIsCv` (`candidateValidation.service.ts`) rechaza el archivo si la IA devolvió un **perfil totalmente en blanco** (campos de texto vacíos, `educationLevel NONE`, sin skills, `yearsOfExperience 0`) — es decir, el PDF no era un currículum — **antes** de gastar una subida a Cloudinary. Un CV real al que le falta un solo campo nunca se rechaza (todos los campos significativos deben estar en blanco).
 6. **Subida a Cloudinary.** El PDF original se almacena; la URL se guarda en el candidato.
-7. **Persistencia.** Se crea una fila `Candidate` con el perfil estructurado, el `hash`, la URL de Cloudinary y el JSON crudo de la IA (`rawApiPayload`). Una carrera que inserta un hash duplicado se captura (`P2002`) y resuelve al candidato existente.
+7. **Persistencia.** Se crea una fila `Candidate` con el perfil estructurado, el `hash`, la URL de Cloudinary y el JSON crudo de la IA (`rawApiPayload`), y se crea una fila `Application(candidateId, vacancyId)` que lo enlaza con esta vacante. Una carrera que inserta un `(userId, hash)` duplicado se captura (`P2002`) y resuelve al candidato existente (también haciendo upsert de su fila `Application` para esta vacante).
 
-**La evaluación es un paso separado y explícito** (`POST /api/vacancies/:id/evaluations`): corre el motor de matching sobre los candidatos de la vacante que aún no tienen `MatchResult`, de nuevo con `p-limit(5)`.
+**La evaluación es un paso separado y explícito** (`POST /api/vacancies/:id/evaluations`): corre el motor de matching sobre las filas `Application` pendientes de la vacante (candidatos sin `MatchResult` para esa vacante todavía) — no sobre `Candidate.vacancyId` directamente — de modo que un candidato reusado entre vacantes se evalúa en cada una a la que aplicó, de nuevo con `p-limit(5)`.
 
 ## 12. Integración con IA (OpenAI)
 
@@ -397,7 +397,7 @@ En el VPS **todo corre contenerizado** (backend + MySQL vía `docker-compose.yml
 - **El borrado de `Department` cascadea:** `Position.department` es `onDelete: Cascade`, así que borrar un Departamento borra sus Posiciones en vez de bloquearse. Hacer el borrado bloqueante requeriría un cambio de esquema a `onDelete: Restrict` + una nueva migración.
 - **Inconsistencia en la forma de respuesta:** `sendResponseOr404` envuelve doble el éxito como `{ response: { success, data } }`; el resto devuelve `{ success, data }`. Registrado, aún no unificado.
 - **Los errores de Multer aparecen como `500`:** una violación de tipo/tamaño/cantidad de archivo lanza un `Error`/`MulterError` genérico sin `statusCode`, así que el handler global cae a `500` en vez de un `4xx` limpio. El límite **sí** se aplica; solo el status code es imperfecto.
-- **El modelo `Application` está latente:** presente en el esquema, sin rutas/controlador.
+- **El modelo `Application` no tiene endpoint CRUD dedicado:** escrito/leído activamente de forma interna por el pipeline de subida y evaluación (ver [§11](#11-el-pipeline-de-procesamiento-de-cvs)) y expuesto en modo lectura (`ApplicationStatus` anidado) vía `GET /api/vacancies/:id/results`, pero no existe una ruta `/api/applications` para gestionarlo directamente.
 - **Comentarios de código solo en inglés:** todos los comentarios inline/block/JSDoc deben estar en inglés, sin importar el idioma de trabajo (convención del proyecto).
 - **Sin `any` en TypeScript:** se aplica tipado estricto; la base está en migración de JS a TS.
 

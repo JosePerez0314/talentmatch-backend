@@ -18,7 +18,7 @@ El sistema usa MySQL como base de datos subyacente. La arquitectura hace cumplir
 
 - **User (Tenant):** representa al Admin de RRHH / Reclutador. Todos los datos centrales (Positions, Candidates, Vacancies) deben rastrearse hasta un `userId` para garantizar el aislamiento de datos entre distintas cuentas corporativas.
 - **Position:** la línea base de requisitos del puesto, almacenando criterios estrictos como `yearsOfExperience` y arrays no estructurados dentro de campos JSON para `technicalSkills` y `softSkills`.
-- **Candidate:** el perfil de postulante parseado por IA. Contiene un `hash` único del texto del CV para prevenir procesamiento LLM duplicado. Almacena el `rawApiPayload` completo como JSON para auditoría.
+- **Candidate:** el perfil de postulante parseado por IA. Contiene un `hash` del texto del CV, único por usuario (`@@unique([userId, hash])`), para prevenir procesamiento LLM duplicado sin filtrar un candidato entre tenants. Almacena el `rawApiPayload` completo como JSON para auditoría.
 - **Vacancy:** una publicación de puesto activa ligada a una Position. Rastreada vía un enum `VacancyStatus` (`OPEN`, `CONTACTING`, `FILLED`).
 - **MatchResult:** la tabla de unión que almacena el puntaje matemático determinístico. Un candidato solo puede tener un puntaje de evaluación por vacante, forzado por una clave compuesta única (`@@unique([candidateId, vacancyId])`). Cachea el snapshot JSON `normalizedCandidate` al momento de la evaluación para auditabilidad.
 

@@ -292,7 +292,7 @@ Resultados de matching (IA) paginados.
 | `page` (query)  | `number` | No        | 1       |
 | `limit` (query) | `number` | No        | 20      |
 
-**Respuesta 200:** `{ success, data: MatchResult[], meta: { total, page, limit, totalPages } }`.
+**Respuesta 200:** `{ success, data: MatchResult[], meta: { total, page, limit, totalPages } }`. Cada `MatchResult` incluye el desglose completo (`hardSkillsScore`, `experienceScore`, `roleScore`, `languagesScore`, `educationScore`, `softSkillsScore`), el snapshot congelado `normalizedCandidate`, `summary`, `redFlags`, y un `candidate` anidado: `{ id, fullName, email, fileUrl, applications: [{ status }] }` — este es actualmente el único lugar donde se expone `ApplicationStatus` al cliente (solo lectura, sin endpoint dedicado `/api/applications` — ver §8.5).
 
 > **Sin tope máximo en `limit`:** el controlador hace `parseInt(req.query.limit) || 20` sin ningún `Math.min`/clamp contra un tamaño de página máximo. Un cliente que envíe `?limit=100000` recibe todos los `MatchResult` de esa vacante en una sola "página". Usar `meta.total`/`meta.totalPages` para manejar la paginación real en la UI, en vez de asumir que 20 es un tope fijo.
 
@@ -474,7 +474,7 @@ Todas las relaciones entre entidades (`Position.departmentId`, `Vacancy.departme
 
 ### 8.5 `Application` — sin endpoint dedicado, pero activa desde 2026-07-13
 
-~~`Application` está definida en `prisma/schema.prisma` (con `ApplicationStatus`) pero no tiene rutas ni controlador activos en la API actual.~~ **Parcialmente superado (2026-07-13):** `Application(candidateId, vacancyId)` ahora se escribe internamente desde `POST /api/vacancies/:id/upload` (vinculando un candidato reutilizado a una nueva vacante) y se lee desde `POST /api/vacancies/:id/evaluations` (para saber qué candidatos están pendientes en una vacante) — ver sección 4. Sigue sin existir un endpoint dedicado `/api/applications` para leer/escribir registros `Application` directamente o inspeccionar `ApplicationStatus`; por ahora es puramente una tabla de unión interna.
+~~`Application` está definida en `prisma/schema.prisma` (con `ApplicationStatus`) pero no tiene rutas ni controlador activos en la API actual.~~ **Parcialmente superado (2026-07-13):** `Application(candidateId, vacancyId)` ahora se escribe internamente desde `POST /api/vacancies/:id/upload` (vinculando un candidato reutilizado a una nueva vacante) y se lee desde `POST /api/vacancies/:id/evaluations` (para saber qué candidatos están pendientes en una vacante) — ver sección 4. Sigue sin existir un endpoint dedicado `/api/applications` para leer/escribir registros `Application` directamente, pero `ApplicationStatus` ya no está totalmente oculto: `GET /api/vacancies/:id/results` lo expone en modo lectura, anidado como `candidate.applications[0].status` (ver sección 4). Escribir/actualizar registros `Application` directamente sigue sin tener ruta.
 
 ---
 
