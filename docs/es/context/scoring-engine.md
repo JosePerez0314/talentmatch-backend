@@ -26,9 +26,9 @@ El motor de matching evalúa a un candidato contra una vacante usando una funci�
 - **Habilidades técnicas (30%):** calculado vía ratio lineal `(Skills coincidentes / Skills requeridos) * 30`.
 - **Experiencia (20%):**
   - Puntos completos (20) si los años del candidato cumplen o superan el requisito.
-  - Degradación elegante (10 puntos) si se quedan cortos en años, pero el análisis semántico de la IA marcó `projectHighlights` relevantes.
-  - Ratio estándar aplicado en otro caso.
-- **Rol (15%):** chequeo binario. Un match exacto de string da 15 puntos; si no, 0.
+  - Si no, primero se calcula el ratio proporcional, y el "salvavidas" se aplica como **piso**: `max(proporcional, 10)` cuando el análisis semántico de la IA marcó `projectHighlights` relevantes. Solo puede subir el puntaje, nunca recortarlo.
+  - Ratio estándar aplicado cuando no hay highlights.
+- **Rol (15%):** pertenencia bidireccional (case-insensitive, con trim). Si alguno de los dos strings de rol contiene al otro, 15 puntos; si no, 0. Ambos deben ser no vacíos.
 - **Idiomas (15%):** calculado vía ratio lineal.
 - **Educación (10%):** escala de umbral (`none` a `phd`). 10 puntos completos si la posición no requiere un nivel mínimo, o si el nivel del candidato lo iguala o supera; si no, un puntaje **proporcional** (`nivelCandidato / nivelPosición * 10`), no un 0 plano.
 - **Soft Skills (10%):** calculado vía ratio lineal.

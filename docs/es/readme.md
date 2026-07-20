@@ -64,8 +64,9 @@ La IA **no asigna el puntaje** — solo estructura el perfil. El puntaje final (
 
 **Reglas de negocio especiales:**
 
-- **"Lifesaver":** si al candidato le faltan años de experiencia formal pero tiene proyectos personales sólidos, recibe puntos parciales de experiencia en vez de ser descartado automáticamente.
-- **"Guillotina":** si al candidato le falta una habilidad técnica obligatoria, la contribución de hard skills se reduce proporcionalmente y lo saca del top del ranking.
+- **"Lifesaver":** si al candidato le faltan años de experiencia formal pero tiene proyectos personales sólidos, tiene garantizado al menos la mitad del peso de experiencia. Es un **piso** (`max(proporcional, 10)`), así que nunca baja el puntaje de quien ya se ganaba más por años.
+- **Match de rol flexible:** el rol requerido y el rol normalizado del candidato coinciden si alguno de los dos strings contiene al otro, absorbiendo diferencias menores de redacción y títulos compuestos en vez de perder los 15 puntos completos por un match exacto fallido.
+- **Los criterios requeridos deben definirse:** el motor de scoring trata una lista de requisitos vacía como "todos los candidatos la cumplen al 100%", por lo que crear una posición exige al menos una habilidad técnica, una soft skill y un idioma — de lo contrario todos los candidatos recibirían esos puntos gratis.
 
 ## Arquitectura y seguridad
 

@@ -39,11 +39,16 @@ const WEIGHTS: Weights = {
   SOFT_SKILLS: 0.1,
 };
 
+// Ordinal ladder used for proportional education scoring. The order here is
+// the real-world academic hierarchy and is intentionally independent of the
+// declaration order of the `EducationLevel` Prisma enum: a base university
+// degree (BACHELOR) outranks a TECHNICAL one, so partial credit degrades the
+// way a recruiter expects.
 const EDUCATION_LEVELS: Record<string, number> = {
   NONE: 0,
   HIGH_SCHOOL: 1,
-  BACHELOR: 2,
-  TECHNICAL: 3,
+  TECHNICAL: 2,
+  BACHELOR: 3,
   UNIVERSITY: 4,
   MASTER: 5,
   DOCTORATE: 6,
@@ -85,28 +90,43 @@ export const calculateMatchScore = (
   if (normalizedCandidate.yearsOfExperience >= position.yearsOfExperience) {
     expScore = WEIGHTS.EXPERIENCE * 100;
   } else {
+    // Always compute the proportional value the candidate earned on raw years
+    // first, so the lifesaver can never take points away from them.
+    const proportionalScore: number =
+      position.yearsOfExperience > 0
+        ? (normalizedCandidate.yearsOfExperience / position.yearsOfExperience) *
+          (WEIGHTS.EXPERIENCE * 100)
+        : 0;
+
     const highlights: string[] =
       normalizedCandidate.aiAnalysis?.projectHighlights || [];
 
-    if (highlights && highlights.length > 0) {
-      expScore = WEIGHTS.EXPERIENCE * 50;
-    } else {
-      expScore =
-        position.yearsOfExperience > 0
-          ? (normalizedCandidate.yearsOfExperience /
-              position.yearsOfExperience) *
-            (WEIGHTS.EXPERIENCE * 100)
-          : 0;
-    }
+    // Lifesaver: strong personal projects act as a minimum floor for junior
+    // profiles, never as a cap — the higher of the two always wins.
+    expScore =
+      highlights.length > 0
+        ? Math.max(proportionalScore, WEIGHTS.EXPERIENCE * 50)
+        : proportionalScore;
   }
   finalScore += expScore;
   breakdown.experience = { score: expScore };
 
   // Role
-  const roleScore: number =
-    normalizedCandidate.role.toLowerCase() === position.role.toLowerCase()
-      ? WEIGHTS.ROLE * 100
-      : 0;
+  // Bidirectional containment instead of strict equality: it absorbs minor
+  // semantic drift and compound titles ("Backend Developer" vs "Senior Backend
+  // Developer") without wiping out 15 points over a wording mismatch.
+  const positionRole: string = position.role.trim().toLowerCase();
+  const candidateRole: string = normalizedCandidate.role.trim().toLowerCase();
+
+  // Guard against empty strings: "".includes("") is true, so an unguarded
+  // check would award full points to a candidate with no role at all.
+  const roleMatches: boolean =
+    positionRole.length > 0 &&
+    candidateRole.length > 0 &&
+    (candidateRole.includes(positionRole) ||
+      positionRole.includes(candidateRole));
+
+  const roleScore: number = roleMatches ? WEIGHTS.ROLE * 100 : 0;
   finalScore += roleScore;
   breakdown.role = { score: roleScore };
 

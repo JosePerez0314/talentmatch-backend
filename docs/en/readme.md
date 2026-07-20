@@ -64,8 +64,9 @@ The AI **does not assign the score** — it only structures the profile. The fin
 
 **Special business rules:**
 
-- **"Lifesaver":** if the candidate lacks formal years of experience but has strong personal projects, they get partial experience credit instead of an automatic reject.
-- **"Guillotine":** if the candidate is missing a mandatory hard skill, the hard-skills contribution is reduced proportionally, pushing them out of the top of the ranking.
+- **"Lifesaver":** if the candidate lacks formal years of experience but has strong personal projects, they are guaranteed at least half the experience weight. It is a **floor** (`max(proportional, 10)`), so it never lowers the score of someone who already earned more on raw years.
+- **Flexible role matching:** the required role and the candidate's normalized role match if either string contains the other, absorbing minor wording differences and compound titles instead of losing all 15 points to an exact-match miss.
+- **Required criteria must be defined:** the scoring engine treats an empty requirement list as "every candidate fully satisfies it", so position creation requires at least one technical skill, one soft skill and one language — otherwise every candidate would receive those points for free.
 
 ## Architecture & security
 
