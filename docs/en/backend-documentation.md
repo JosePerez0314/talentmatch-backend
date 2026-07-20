@@ -282,16 +282,18 @@ The OpenAI client is a thin singleton (`src/services/openai.service.ts`) built f
 | Criterion | Weight | How it's computed |
 | --- | --- | --- |
 | Technical (hard) skills | 30% | Linear ratio `matched / required × 30`. If the Position lists no required skills, full marks. Matching is case-insensitive. |
-| Experience | 20% | Full 20 if candidate years ≥ required. Otherwise the **"lifesaver"**: if the AI flagged `projectHighlights`, award half (10) instead of a proportional cut; else proportional ratio (0 if the requirement is `0`). |
-| Role | 15% | Binary: exact (case-insensitive) role-string match → 15, else 0. |
+| Experience | 20% | Full 20 if candidate years ≥ required. Otherwise the proportional ratio `candidateYears / requiredYears × 20` is computed first, and the **"lifesaver"** applies as a **floor**: if the AI flagged `projectHighlights`, the score is `max(proportional, 10)`. The lifesaver can only ever raise the score, never lower it. |
+| Role | 15% | **Bidirectional containment** (case-insensitive, trimmed): if either role string contains the other, award 15; else 0. Both strings must be non-empty — an empty role scores 0 rather than matching everything. |
 | Languages | 15% | Linear ratio `matched / required × 15` (full marks if none required). |
-| Education | 10% | Levels ranked `NONE(0) … DOCTORATE(6)`. Full 10 if the Position requires `NONE` or the candidate's level ≥ the required level; otherwise proportional. |
+| Education | 10% | Ordinal ladder `NONE(0) → HIGH_SCHOOL(1) → TECHNICAL(2) → BACHELOR(3) → UNIVERSITY(4) → MASTER(5) → DOCTORATE(6)`. Full 10 if the Position requires `NONE` or the candidate's level ≥ the required level; otherwise proportional. |
 | Soft skills | 10% | Linear ratio `matched / required × 10` (full marks if none required). |
 
 **Special rules called out in the code:**
 
-- **"Lifesaver":** a candidate short on formal years but with strong personal projects gets partial experience credit instead of an automatic reject.
-- **"Guillotine":** a missing mandatory hard skill drags the hard-skills contribution down proportionally (it is the largest weight), pushing the candidate down the ranking.
+- **"Lifesaver":** a candidate short on formal years but with strong personal projects is guaranteed **at least** half the experience weight (10 points). It is implemented as `Math.max(proportional, 10)`, so it is a safety floor for junior profiles and never penalizes a candidate who already earned more on raw years alone.
+- **No "guillotine" rule exists.** Hard skills are not flagged mandatory-vs-optional in the schema, so every required skill carries identical weight and a missing one only costs its linear share (`1 / required × 30`). A candidate missing a critical skill can still outrank one who has it. Implementing a true guillotine would require a per-skill mandatory flag in `prisma/schema.prisma` first.
+- **Education ladder is independent of the Prisma enum order.** `EDUCATION_LEVELS` in `scoringEngine.ts` deliberately ranks `TECHNICAL(2)` below `BACHELOR(3)`, which is *not* the declaration order of the `EducationLevel` enum. The enum order is storage; the ladder is the academic hierarchy used for proportional credit.
+- **Empty requirement arrays award full marks** ("Assumption of Competence"): if HR defines no requirement in a category, every candidate is treated as fully satisfying it. The engine stays a pure function and does not second-guess its inputs — the guard against score inflation lives in the **validation layer**, where `technicalSkills`, `softSkills` and `languages` are each required to hold at least one entry when creating a Position.
 
 In the evaluation controller, each criterion's rounded score plus the total is persisted to a `MatchResult`, together with the frozen `normalizedCandidate` snapshot, the AI `summary`, and any `redFlags`.
 

@@ -282,16 +282,18 @@ El cliente de OpenAI es un singleton delgado (`src/services/openai.service.ts`) 
 | Criterio | Peso | Cómo se calcula |
 | --- | --- | --- |
 | Habilidades técnicas (hard skills) | 30% | Ratio lineal `matched / required × 30`. Si la Posición no lista skills requeridas, puntaje completo. El match es case-insensitive. |
-| Experiencia | 20% | 20 completos si los años del candidato ≥ los requeridos. Si no, el **"lifesaver"**: si la IA marcó `projectHighlights`, se otorga la mitad (10) en vez de un recorte proporcional; si no, ratio proporcional (0 si el requisito es `0`). |
-| Rol | 15% | Binario: match exacto (case-insensitive) del string de rol → 15, si no 0. |
+| Experiencia | 20% | 20 completos si los años del candidato ≥ los requeridos. Si no, primero se calcula el ratio proporcional `añosCandidato / añosRequeridos × 20`, y el **"lifesaver"** se aplica como **piso**: si la IA marcó `projectHighlights`, el puntaje es `max(proporcional, 10)`. El lifesaver solo puede subir el puntaje, nunca bajarlo. |
+| Rol | 15% | **Pertenencia bidireccional** (case-insensitive, con trim): si alguno de los dos strings de rol contiene al otro, se otorgan 15; si no, 0. Ambos strings deben ser no vacíos — un rol vacío puntúa 0 en lugar de matchear con todo. |
 | Idiomas | 15% | Ratio lineal `matched / required × 15` (puntaje completo si no se requiere ninguno). |
-| Educación | 10% | Niveles rankeados `NONE(0) … DOCTORATE(6)`. 10 completos si la Posición requiere `NONE` o el nivel del candidato ≥ el requerido; si no, proporcional. |
+| Educación | 10% | Escalera ordinal `NONE(0) → HIGH_SCHOOL(1) → TECHNICAL(2) → BACHELOR(3) → UNIVERSITY(4) → MASTER(5) → DOCTORATE(6)`. 10 completos si la Posición requiere `NONE` o el nivel del candidato ≥ el requerido; si no, proporcional. |
 | Soft skills | 10% | Ratio lineal `matched / required × 10` (puntaje completo si no se requiere ninguna). |
 
 **Reglas especiales señaladas en el código:**
 
-- **"Lifesaver":** un candidato corto en años formales pero con proyectos personales sólidos recibe crédito parcial de experiencia en vez de un rechazo automático.
-- **"Guillotina":** una habilidad técnica obligatoria faltante arrastra hacia abajo la contribución de hard skills de forma proporcional (es el mayor peso), empujando al candidato hacia abajo en el ranking.
+- **"Lifesaver":** un candidato corto en años formales pero con proyectos personales sólidos tiene garantizado **al menos** la mitad del peso de experiencia (10 puntos). Está implementado como `Math.max(proporcional, 10)`, así que es un piso de seguridad para perfiles junior y nunca penaliza a quien ya se ganaba más por pura matemática de años.
+- **No existe la regla "guillotina".** Las hard skills no se marcan como obligatorias vs. opcionales en el esquema, así que toda skill requerida tiene peso idéntico y una faltante solo cuesta su parte lineal (`1 / required × 30`). Un candidato al que le falta una skill crítica puede igualmente rankear por encima de uno que sí la tiene. Implementar una guillotina real requeriría primero un flag de obligatoriedad por skill en `prisma/schema.prisma`.
+- **La escalera de educación es independiente del orden del enum de Prisma.** `EDUCATION_LEVELS` en `scoringEngine.ts` rankea deliberadamente `TECHNICAL(2)` por debajo de `BACHELOR(3)`, que *no* es el orden de declaración del enum `EducationLevel`. El orden del enum es almacenamiento; la escalera es la jerarquía académica usada para el crédito proporcional.
+- **Los arrays de requisitos vacíos otorgan puntaje completo** ("Asunción de Competencia"): si RRHH no define requisitos en una categoría, se asume que todos los candidatos la cumplen al 100%. El motor se mantiene como función pura y no cuestiona sus entradas — la barrera contra la inflación de puntajes vive en la **capa de validación**, donde `technicalSkills`, `softSkills` e `languages` deben tener al menos un elemento al crear una Posición.
 
 En el controlador de evaluación, el puntaje redondeado de cada criterio más el total se persiste en un `MatchResult`, junto con el snapshot congelado `normalizedCandidate`, el `summary` de la IA y cualquier `redFlags`.
 

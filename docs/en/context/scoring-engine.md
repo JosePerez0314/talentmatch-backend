@@ -20,9 +20,9 @@ The matching engine evaluates a candidate against a vacancy using a deterministi
 **Weight Distribution (100 Points Total):**
 * **Technical Skills (30%):** Calculated via linear ratio `(Matched Skills / Required Skills) * 30`.
 * **Experience (20%):** * Full points (20) if the candidate's years meet or exceed the requirement.
-  * Graceful Degradation (10 points) if they fall short on years, but the AI semantic analysis flagged relevant `projectHighlights`.
-  * Standard ratio applied otherwise.
-* **Role (15%):** Binary check. Exact string match yields 15 points; otherwise, 0.
+  * Otherwise the proportional ratio is computed first, and the "lifesaver" applies as a **floor**: `max(proportional, 10)` when the AI semantic analysis flagged relevant `projectHighlights`. It can only raise the score, never cut it.
+  * Standard ratio applied when there are no highlights.
+* **Role (15%):** Bidirectional containment (case-insensitive, trimmed). If either role string contains the other, 15 points; otherwise 0. Both must be non-empty.
 * **Languages (15%):** Calculated via linear ratio.
 * **Education (10%):** Threshold scale (`none` to `phd`). Full 10 points if the position requires no minimum level, or if the candidate's level meets or exceeds it; otherwise a **proportional** score (`candidateLevel / positionLevel * 10`), not a flat 0.
 * **Soft Skills (10%):** Calculated via linear ratio.

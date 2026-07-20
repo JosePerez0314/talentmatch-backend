@@ -6,13 +6,19 @@ const basePositionBody = z.object({
 
   yearsOfExperience: z.coerce.number().int().nonnegative(),
 
+  // Empty requirement arrays are treated by the scoring engine as "fully
+  // satisfied" (Assumption of Competence), which silently inflates every
+  // candidate's score. The validation layer is the barrier: if a criterion is
+  // weighted, the recruiter must define it when creating the position.
   technicalSkills: z.array(z.string()).min(1),
 
   optionalTechnicalSkills: z.array(z.string()).optional(),
 
-  softSkills: z.array(z.string()),
+  softSkills: z
+    .array(z.string())
+    .min(1, "At least one soft skill is required"),
 
-  languages: z.array(z.string()).optional(),
+  languages: z.array(z.string()).min(1, "At least one language is required"),
 
   description: z
     .string()

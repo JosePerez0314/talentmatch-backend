@@ -182,8 +182,8 @@ Crea una posición. Valida que `departmentId` exista y pertenezca al usuario.
 | `yearsOfExperience`       | `number`                  | Sí          | entero ≥ 0 — acepta `0` para roles entry-level (coerción desde string) |
 | `technicalSkills`         | `string[]`                | Sí          | mínimo 1 elemento                                     |
 | `optionalTechnicalSkills` | `string[]`                | No          | —                                                     |
-| `softSkills`              | `string[]`                | Sí          | —                                                     |
-| `languages`               | `string[]`                | No          | —                                                     |
+| `softSkills`              | `string[]`                | Sí          | mínimo 1 elemento — `"At least one soft skill is required"` |
+| `languages`               | `string[]`                | Sí          | mínimo 1 elemento — `"At least one language is required"`   |
 | `description`             | `string`                  | Sí          | mínimo 25 caracteres                                  |
 | `educationLevel`          | `EducationLevel` (string) | Sí          | debe ser uno de los valores del enum                  |
 | `educationArea`           | `string`                  | Condicional | **ver sección 8 — regla `NONE`**                      |
