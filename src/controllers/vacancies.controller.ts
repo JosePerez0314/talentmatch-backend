@@ -6,6 +6,7 @@ import { Request, Response, NextFunction } from "express";
 import { findExistingCandidateByCv } from "../services/cvProcessing.service.js";
 import { assertCandidateIsCv } from "../services/candidateValidation.service.js";
 import {
+  ApplicationStatus,
   EducationLevel,
   VacancyStatus,
   Candidate,
@@ -21,11 +22,15 @@ import {
   sendVacancySchema,
   updateVacancySchema,
   changeStatusSchema,
+  changeCandidateStatusSchema,
 } from "../validations/vacancy.validation.js";
 
 type SendVacancyBody = z.infer<typeof sendVacancySchema>["body"];
 type UpdateVacancyBody = z.infer<typeof updateVacancySchema>["body"];
 type ChangeStatusBody = z.infer<typeof changeStatusSchema>["body"];
+type ChangeCandidateStatusBody = z.infer<
+  typeof changeCandidateStatusSchema
+>["body"];
 
 interface VacancyData {
   title: string;
@@ -625,4 +630,107 @@ export const deleteVacancy: VacancyController = async (req, res, next) => {
     success: true,
     message: "Vacancy deleted successfully",
   });
+};
+
+// Carries an HTTP status code through the $transaction below so the catch
+// block can map it straight to a response instead of falling through to the
+// generic errorHandler 500 branch (errorHandler already duck-types .statusCode).
+class HttpError extends Error {
+  constructor(
+    public statusCode: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "HttpError";
+  }
+}
+
+export const changeCandidateStatus: VacancyController = async (
+  req,
+  res,
+  next,
+) => {
+  const vacancyId = req.params.vacancyId as unknown as number;
+  const candidateId = req.params.candidateId as unknown as number;
+  const { status } = req.body as ChangeCandidateStatusBody;
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      // Row-locks the vacancy so two near-simultaneous hires for it can't
+      // both read the same "slots remaining" count before either commits.
+      const [vacancy] = await tx.$queryRaw<
+        { id: number; availableSlots: number; status: VacancyStatus }[]
+      >`SELECT id, availableSlots, status FROM Vacancy WHERE id = ${vacancyId} AND userId = ${req.user!.id} FOR UPDATE`;
+
+      if (!vacancy) {
+        throw new HttpError(404, "Vacancy not found or unauthorized");
+      }
+
+      if (vacancy.status === "CLOSED") {
+        throw new HttpError(
+          409,
+          "This vacancy is closed; candidate status can no longer be changed",
+        );
+      }
+
+      const application = await tx.application.findFirst({
+        where: {
+          vacancyId,
+          candidateId,
+          candidate: { userId: req.user!.id },
+        },
+      });
+
+      if (!application) {
+        throw new HttpError(404, "Candidate is not linked to this vacancy");
+      }
+
+      const isNewSelection =
+        status === "SELECCIONADO" && application.status !== "SELECCIONADO";
+
+      if (isNewSelection) {
+        const selectedCount = await tx.application.count({
+          where: { vacancyId, status: "SELECCIONADO" },
+        });
+
+        if (selectedCount >= vacancy.availableSlots) {
+          throw new HttpError(409, "No available slots left for this vacancy");
+        }
+      }
+
+      const updatedApplication = await tx.application.update({
+        where: { candidateId_vacancyId: { candidateId, vacancyId } },
+        data: { status: status as ApplicationStatus },
+      });
+
+      let vacancyStatus: VacancyStatus = vacancy.status;
+
+      if (isNewSelection) {
+        const selectedCountAfter = await tx.application.count({
+          where: { vacancyId, status: "SELECCIONADO" },
+        });
+
+        if (selectedCountAfter >= vacancy.availableSlots) {
+          await tx.vacancy.update({
+            where: { id: vacancyId },
+            data: { status: "CLOSED" },
+          });
+          vacancyStatus = "CLOSED";
+        }
+      }
+
+      return {
+        application: updatedApplication,
+        vacancy: {
+          id: vacancy.id,
+          availableSlots: vacancy.availableSlots,
+          status: vacancyStatus,
+        },
+      };
+    });
+
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
 };

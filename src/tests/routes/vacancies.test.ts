@@ -42,11 +42,12 @@ const seedVacancy = (
   positionId: number,
   status: "ACTIVE" | "PAUSED" | "CLOSED" = "ACTIVE",
   title = "Backend Vacancy",
+  availableSlots = 1,
 ) =>
   prisma.vacancy.create({
     data: {
       title,
-      availableSlots: 1,
+      availableSlots,
       startDate: new Date("2026-01-01"),
       endDate: new Date("2026-12-31"),
       status,
@@ -76,6 +77,12 @@ const seedCandidate = (userId: number, vacancyId: number, hash: string) =>
       vacancyId,
     },
   });
+
+const seedApplication = (
+  candidateId: number,
+  vacancyId: number,
+  status: "PENDIENTE" | "EN_PROCESO" | "SELECCIONADO" | "RECHAZADO" = "PENDIENTE",
+) => prisma.application.create({ data: { candidateId, vacancyId, status } });
 
 const seedMatchResult = (candidateId: number, vacancyId: number, score: number) =>
   prisma.matchResult.create({
@@ -344,6 +351,225 @@ describe("PATCH /api/vacancies/:id/status", () => {
   });
 });
 
+describe("PATCH /api/vacancies/:vacancyId/candidates/:candidateId/status", () => {
+  it("returns 200 and updates the application status (happy path)", async () => {
+    const { owner, department, position } = await seedGraph();
+    const vacancy = await seedVacancy(
+      owner.id,
+      department.id,
+      position.id,
+      "ACTIVE",
+      "Backend Vacancy",
+      2,
+    );
+    const candidate = await seedCandidate(owner.id, vacancy.id, "hash-a");
+    await seedApplication(candidate.id, vacancy.id);
+
+    const res = await request(app)
+      .patch(`/api/vacancies/${vacancy.id}/candidates/${candidate.id}/status`)
+      .set("Authorization", tokenFor(owner))
+      .send({ status: "EN_PROCESO" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.application.status).toBe("EN_PROCESO");
+    expect(res.body.data.vacancy.status).toBe("ACTIVE");
+  });
+
+  it("closes the vacancy when the last available slot is filled", async () => {
+    const { owner, department, position } = await seedGraph();
+    const vacancy = await seedVacancy(
+      owner.id,
+      department.id,
+      position.id,
+      "ACTIVE",
+      "Backend Vacancy",
+      1,
+    );
+    const candidate = await seedCandidate(owner.id, vacancy.id, "hash-a");
+    await seedApplication(candidate.id, vacancy.id);
+
+    const res = await request(app)
+      .patch(`/api/vacancies/${vacancy.id}/candidates/${candidate.id}/status`)
+      .set("Authorization", tokenFor(owner))
+      .send({ status: "SELECCIONADO" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.application.status).toBe("SELECCIONADO");
+    expect(res.body.data.vacancy.status).toBe("CLOSED");
+
+    const persisted = await prisma.vacancy.findUnique({
+      where: { id: vacancy.id },
+    });
+    expect(persisted!.status).toBe("CLOSED");
+  });
+
+  it("does not close the vacancy while slots remain", async () => {
+    const { owner, department, position } = await seedGraph();
+    const vacancy = await seedVacancy(
+      owner.id,
+      department.id,
+      position.id,
+      "ACTIVE",
+      "Backend Vacancy",
+      2,
+    );
+    const candidate = await seedCandidate(owner.id, vacancy.id, "hash-a");
+    await seedApplication(candidate.id, vacancy.id);
+
+    const res = await request(app)
+      .patch(`/api/vacancies/${vacancy.id}/candidates/${candidate.id}/status`)
+      .set("Authorization", tokenFor(owner))
+      .send({ status: "SELECCIONADO" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.vacancy.status).toBe("ACTIVE");
+  });
+
+  it("returns 409 and rejects the selection once all slots are filled", async () => {
+    const { owner, department, position } = await seedGraph();
+    const vacancy = await seedVacancy(
+      owner.id,
+      department.id,
+      position.id,
+      "ACTIVE",
+      "Backend Vacancy",
+      1,
+    );
+    const hired = await seedCandidate(owner.id, vacancy.id, "hash-hired");
+    await seedApplication(hired.id, vacancy.id, "SELECCIONADO");
+    const contender = await seedCandidate(owner.id, vacancy.id, "hash-contender");
+    await seedApplication(contender.id, vacancy.id);
+
+    const res = await request(app)
+      .patch(`/api/vacancies/${vacancy.id}/candidates/${contender.id}/status`)
+      .set("Authorization", tokenFor(owner))
+      .send({ status: "SELECCIONADO" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/no available slots/i);
+
+    const application = await prisma.application.findUnique({
+      where: {
+        candidateId_vacancyId: { candidateId: contender.id, vacancyId: vacancy.id },
+      },
+    });
+    expect(application!.status).toBe("PENDIENTE");
+  });
+
+  it("allows re-confirming a candidate already SELECCIONADO without double-counting the slot", async () => {
+    const { owner, department, position } = await seedGraph();
+    const vacancy = await seedVacancy(
+      owner.id,
+      department.id,
+      position.id,
+      "ACTIVE",
+      "Backend Vacancy",
+      1,
+    );
+    const candidate = await seedCandidate(owner.id, vacancy.id, "hash-a");
+    await seedApplication(candidate.id, vacancy.id, "SELECCIONADO");
+
+    const res = await request(app)
+      .patch(`/api/vacancies/${vacancy.id}/candidates/${candidate.id}/status`)
+      .set("Authorization", tokenFor(owner))
+      .send({ status: "SELECCIONADO" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.application.status).toBe("SELECCIONADO");
+  });
+
+  it("returns 409 when the vacancy is already CLOSED", async () => {
+    const { owner, department, position } = await seedGraph();
+    const vacancy = await seedVacancy(
+      owner.id,
+      department.id,
+      position.id,
+      "CLOSED",
+      "Backend Vacancy",
+      2,
+    );
+    const candidate = await seedCandidate(owner.id, vacancy.id, "hash-a");
+    await seedApplication(candidate.id, vacancy.id);
+
+    const res = await request(app)
+      .patch(`/api/vacancies/${vacancy.id}/candidates/${candidate.id}/status`)
+      .set("Authorization", tokenFor(owner))
+      .send({ status: "EN_PROCESO" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/closed/i);
+  });
+
+  it("returns 404 when the candidate has no Application for this vacancy", async () => {
+    const { owner, department, position } = await seedGraph();
+    const vacancy = await seedVacancy(owner.id, department.id, position.id);
+    const candidate = await seedCandidate(owner.id, vacancy.id, "hash-a");
+    // No Application row created for this candidate/vacancy pair.
+
+    const res = await request(app)
+      .patch(`/api/vacancies/${vacancy.id}/candidates/${candidate.id}/status`)
+      .set("Authorization", tokenFor(owner))
+      .send({ status: "EN_PROCESO" });
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/not linked/i);
+  });
+
+  it("returns 404 when the vacancy does not exist", async () => {
+    const owner = await seedUser("owner@test.com");
+    const res = await request(app)
+      .patch("/api/vacancies/999999/candidates/1/status")
+      .set("Authorization", tokenFor(owner))
+      .send({ status: "EN_PROCESO" });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 when the vacancy belongs to another user", async () => {
+    const owner = await seedUser("owner@test.com");
+    const other = await seedGraph("other@test.com");
+    const vacancy = await seedVacancy(
+      other.owner.id,
+      other.department.id,
+      other.position.id,
+    );
+    const candidate = await seedCandidate(other.owner.id, vacancy.id, "hash-a");
+    await seedApplication(candidate.id, vacancy.id);
+
+    const res = await request(app)
+      .patch(`/api/vacancies/${vacancy.id}/candidates/${candidate.id}/status`)
+      .set("Authorization", tokenFor(owner))
+      .send({ status: "EN_PROCESO" });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 400 for an invalid status value", async () => {
+    const { owner, department, position } = await seedGraph();
+    const vacancy = await seedVacancy(owner.id, department.id, position.id);
+    const candidate = await seedCandidate(owner.id, vacancy.id, "hash-a");
+    await seedApplication(candidate.id, vacancy.id);
+
+    const res = await request(app)
+      .patch(`/api/vacancies/${vacancy.id}/candidates/${candidate.id}/status`)
+      .set("Authorization", tokenFor(owner))
+      .send({ status: "HIRED" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.details).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ field: "body.status" }),
+      ]),
+    );
+  });
+
+  it("returns 401 when no token is provided", async () => {
+    const res = await request(app)
+      .patch("/api/vacancies/1/candidates/1/status")
+      .send({ status: "EN_PROCESO" });
+    expect(res.status).toBe(401);
+  });
+});
+
 describe("PUT /api/vacancies/:id", () => {
   it("returns 200 and updates the vacancy (happy path)", async () => {
     const { owner, department, position } = await seedGraph();
@@ -550,7 +776,12 @@ describe("POST /api/vacancies/:id/evaluations", () => {
     it("returns 201 and persists a match result per candidate", async () => {
       const { owner, department, position } = await seedGraph();
       const vacancy = await seedVacancy(owner.id, department.id, position.id);
-      await seedCandidate(owner.id, vacancy.id, "hash-eval");
+      const candidate = await seedCandidate(owner.id, vacancy.id, "hash-eval");
+      // evaluateCandidates sources pending candidates from Application, not
+      // Candidate.vacancyId (see the controller's comment on that query).
+      await prisma.application.create({
+        data: { candidateId: candidate.id, vacancyId: vacancy.id },
+      });
 
       const res = await request(app)
         .post(`/api/vacancies/${vacancy.id}/evaluations`)

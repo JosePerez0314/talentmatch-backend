@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { VacancyStatus } from "@prisma/client";
+import { ApplicationStatus, VacancyStatus } from "@prisma/client";
 
 const baseVacancyBody = z.object({
   title: z.string().min(1, "Role is required"),
@@ -50,5 +50,15 @@ export const changeStatusSchema = z.object({
   }),
   body: z.object({
     status: z.enum(Object.values(VacancyStatus) as [string, ...string[]]),
+  }),
+});
+
+export const changeCandidateStatusSchema = z.object({
+  params: z.object({
+    vacancyId: z.coerce.number().int().positive("Invalid vacancy ID"),
+    candidateId: z.coerce.number().int().positive("Invalid candidate ID"),
+  }),
+  body: z.object({
+    status: z.enum(Object.values(ApplicationStatus) as [string, ...string[]]),
   }),
 });
