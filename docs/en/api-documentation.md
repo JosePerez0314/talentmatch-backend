@@ -334,6 +334,38 @@ Runs the AI matching engine over every `Application` for this vacancy that doesn
 
 **Errors:** `400` invalid status/invalid id · `404` doesn't exist/doesn't belong to the user · `500`.
 
+### `PATCH /api/vacancies/:vacancyId/candidates/:candidateId/status`
+
+**Added 2026-07-23.** Changes an `Application`'s status (i.e. a candidate's hiring status for this specific vacancy) and enforces `Vacancy.availableSlots` — see **§8.6** for the full business rule. This is the only write path for `ApplicationStatus` today; there is still no generic `/api/applications` CRUD (see §8.5).
+
+| Parameter | Type | Required |
+| ------------------- | ------------------------- | --------- |
+| `vacancyId` (path) | `number` (positive) | Yes |
+| `candidateId` (path) | `number` (positive) | Yes |
+| `status` (body) | `ApplicationStatus` (string) | Yes |
+
+**Response 200:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "application": { /* updated Application row */ },
+    "vacancy": { "id": 1, "availableSlots": 2, "status": "ACTIVE" }
+  }
+}
+```
+
+Note this endpoint does **not** use `sendResponseOr404` — the response is `{ success, data }` directly, not double-wrapped (contrast with `PATCH /:id/status` above).
+
+**Errors:**
+| Code | Cause |
+|---|---|
+| 400 | Invalid `status` value, or invalid `vacancyId`/`candidateId` |
+| 404 | Vacancy doesn't exist/doesn't belong to the user, or the candidate has no `Application` for this vacancy |
+| 409 | The vacancy is already `CLOSED`, or `status: "SELECCIONADO"` is sent but `availableSlots` is already full (see §8.6) |
+| 500 | Unhandled internal error |
+
 ### `PUT /api/vacancies/:id`
 
 **Real partial update** (same behavior as Positions — see section 8).
@@ -472,9 +504,22 @@ All relationships between entities (`Position.departmentId`, `Vacancy.department
 - Any other unhandled error → `500`. In production (`NODE_ENV=production`) the message is always `"Internal server error"`, with no internal detail; in development the real message is shown for debugging.
 - The frontend **must not** parse the `error` text of a `500` to make business decisions — only for logging.
 
-### 8.5 `Application` — no dedicated endpoint, but active since 2026-07-13
+### 8.5 `Application` — no generic CRUD endpoint, but actively written/read since 2026-07-13
 
-~~`Application` is defined in `prisma/schema.prisma` (with `ApplicationStatus`) but has no active routes or controller in the current API.~~ **Partially superseded (2026-07-13):** `Application(candidateId, vacancyId)` is now written to internally by `POST /api/vacancies/:id/upload` (linking a reused candidate to a new vacancy) and read by `POST /api/vacancies/:id/evaluations` (sourcing which candidates are pending for a vacancy) — see section 4. There is still **no dedicated `/api/applications` endpoint** to read/write `Application` rows directly, but `ApplicationStatus` is no longer fully hidden: `GET /api/vacancies/:id/results` exposes it read-only, nested as `candidate.applications[0].status` (see section 4). Writing/updating `Application` rows directly still has no route.
+~~`Application` is defined in `prisma/schema.prisma` (with `ApplicationStatus`) but has no active routes or controller in the current API.~~ **Partially superseded (2026-07-13):** `Application(candidateId, vacancyId)` is now written to internally by `POST /api/vacancies/:id/upload` (linking a reused candidate to a new vacancy) and read by `POST /api/vacancies/:id/evaluations` (sourcing which candidates are pending for a vacancy) — see section 4. `GET /api/vacancies/:id/results` exposes `ApplicationStatus` read-only, nested as `candidate.applications[0].status` (see section 4).
+
+**Updated 2026-07-23:** `PATCH /api/vacancies/:vacancyId/candidates/:candidateId/status` (section 4) now lets the frontend change a candidate's `ApplicationStatus` for a given vacancy directly — this is the write path referenced by §8.6. There is still **no generic `/api/applications` resource** (no list/create/delete of `Application` rows by their own id) — this endpoint is scoped to one candidate within one vacancy, not a full CRUD surface.
+
+### 8.6 Vacancy slot enforcement & auto-close (added 2026-07-23)
+
+This is a deliberately minimal, **not built for high-concurrency scale** rule, added to close the gap where a vacancy never closed on its own once all its `availableSlots` were filled:
+
+- Only transitioning a candidate's `Application.status` **into** `"SELECCIONADO"` is checked against `Vacancy.availableSlots`. Any other transition (`PENDIENTE`/`EN_PROCESO`/`RECHAZADO`, or re-confirming a candidate already `SELECCIONADO`) never touches the slot count.
+- The check counts existing `Application` rows with `status: "SELECCIONADO"` for that vacancy. If the count is already `>= availableSlots`, the request is rejected with `409` and **nothing is written** — the candidate's status stays whatever it was before the call.
+- If accepting this candidate reaches `availableSlots`, the vacancy's `status` is set to `"CLOSED"` in the **same transaction** as the `Application` update (`prisma.$transaction`, with the `Vacancy` row locked via `SELECT ... FOR UPDATE` for the duration, so two near-simultaneous hire attempts on the same vacancy can't both squeeze past the slot check).
+- **While a vacancy is `CLOSED`, this endpoint rejects *any* candidate status change with `409`** — not just new selections — until the vacancy is reactivated.
+- **No automatic reopening, ever.** Moving a candidate out of `SELECCIONADO` (freeing a slot) does not reopen a `CLOSED` vacancy. Reopening is always the explicit, manual `PATCH /api/vacancies/:id/status` (`ACTIVE`) — this endpoint never writes `Vacancy.status` back to `ACTIVE`.
+- **Raising `availableSlots` does not reopen a `CLOSED` vacancy either.** `PUT /api/vacancies/:id` can increase `availableSlots` (it's a real patch, §8.2), but if the vacancy is `CLOSED` that has to be paired with a manual `PATCH .../status` → `ACTIVE` to actually accept anyone into the new slots.
 
 ---
 

@@ -22,6 +22,7 @@ Todos los commits referenciados abajo están en la rama `test/departments`.
 - [12. `npm test upload`: benchmark de throughput de subida de 100 CVs](#12-npm-test-upload-benchmark-de-throughput-de-subida-de-100-cvs)
 - [13. Retry de `pdf-parse` para dejar de perder CVs en errores transitorios](#13-retry-de-pdf-parse-para-dejar-de-perder-cvs-en-errores-transitorios)
 - [14. `CLAUDE.md` actualizado para documentar la revisión del testing](#14-claudemd-actualizado-para-documentar-la-revisión-del-testing)
+- [15. Endpoint nuevo: cambio de estado de candidato con control de cupos de la vacante](#15-endpoint-nuevo-cambio-de-estado-de-candidato-con-control-de-cupos-de-la-vacante)
 
 ---
 
@@ -249,3 +250,23 @@ Dos cosas surgieron al escribir los tests de Departments que **no** se cambiaron
 **Commit:** (este commit del changelog)
 
 La sección **Testing** de `CLAUDE.md` se extendió para describir todo lo de arriba para que futuras sesiones tengan una referencia precisa: el layout `src/tests/` y la ubicación de helpers, el runner `npm test <name>` (guard de target, anclaje de nombre seguro para Windows, flags de un solo test), el prompt opt-in de servicios externos y los flags `--external`/`--no-external`, la superposición en runtime de claves reales de OpenAI/Cloudinary desde `.env` (y por qué el guard de BD sigue siendo autoritativo), el benchmark `npm test upload` (auto-config de archivo de perf, `KEEP_TEST_DATA`, el tope de 100 archivos, la limpieza que conserva los últimos 100) y el retry de `pdf-parse` en `src/lib/pdfWrapper.ts`.
+
+---
+
+## 15. Endpoint nuevo: cambio de estado de candidato con control de cupos de la vacante
+
+**Archivos:** `src/validations/vacancy.validation.ts`, `src/controllers/vacancies.controller.ts`, `src/routes/vacancies.ts`, `src/tests/routes/vacancies.test.ts`
+**Commit:** _pendiente — todavía no commiteado en esta rama (`fix/scoring-engine-logic`)_
+
+**El problema:** `availableSlots` de una vacante se guardaba al crear/actualizar pero nunca se aplicaba en ningún lado. No existía forma de marcar a un candidato como contratado (`Application.status: "SELECCIONADO"`), y por lo tanto ningún camino de código cerraba una vacante al llenarse sus cupos — el campo era puramente decorativo.
+
+**Qué cambió:** un endpoint nuevo, `PATCH /api/vacancies/:vacancyId/candidates/:candidateId/status`, es la primera vía de escritura para `ApplicationStatus`:
+
+- Valida que la vacante pertenezca al usuario que hace la solicitud y que el candidato tenga una `Application` para esa vacante puntual — `404` si no.
+- Rechaza cualquier cambio de estado con `409` mientras la vacante ya esté `CLOSED`.
+- Solo se verifica contra `availableSlots` una transición *hacia* `SELECCIONADO` (reconfirmar a un candidato ya `SELECCIONADO`, o cualquier otra transición de estado, nunca toca el conteo de cupos) — `409 "No available slots left for this vacancy"` si ya está lleno, sin escribir nada.
+- Si aceptar a este candidato llena el último cupo, el `status` de la vacante se pone en `CLOSED` dentro de la misma `prisma.$transaction` que la actualización de `Application`.
+- La fila de la vacante se bloquea durante toda la transacción (`SELECT ... FOR UPDATE` vía `tx.$queryRaw`) para que dos intentos de contratación casi simultáneos sobre la misma vacante no puedan pasar ambos el chequeo de cupos antes de que uno confirme.
+- **Fuera de alcance a propósito (por diseño, no un descuido):** no hay reapertura automática. Liberar un cupo (sacar a un candidato de `SELECCIONADO`) nunca reabre una vacante `CLOSED`, y tampoco lo hace subir `availableSlots` vía `PUT /api/vacancies/:id`. Reabrir siempre es el `PATCH /api/vacancies/:id/status` → `ACTIVE` manual que ya existía. Esto mantiene el cambio mínimo y evita efectos secundarios inesperados; ver `api-documentation.md` §8.6 para la regla completa documentada para el frontend.
+
+**Tests agregados:** 11 casos nuevos en `vacancies.test.ts` que cubren el happy path, el auto-cierre en el último cupo, el no-cierre mientras quedan cupos, el rechazo `409` (y que la escritura rechazada nunca se persiste), la re-selección idempotente, el `409` sobre una vacante ya `CLOSED`, los 404 (`Application` faltante, vacante inexistente/ajena), el caso de validación `400` y el caso `401`. El helper de test `seedVacancy` recibió un parámetro opcional `availableSlots` (default `1`, así que ningún llamado existente se ve afectado) y se agregó un helper nuevo `seedApplication`.

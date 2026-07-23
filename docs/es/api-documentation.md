@@ -334,6 +334,38 @@ Ejecuta el motor de matching IA sobre cada `Application` de esta vacante que aú
 
 **Errores:** `400` status inválido/id inválido · `404` no existe/no pertenece al usuario · `500`.
 
+### `PATCH /api/vacancies/:vacancyId/candidates/:candidateId/status`
+
+**Agregado 2026-07-23.** Cambia el estado de una `Application` (es decir, el estado de contratación de un candidato para esta vacante puntual) y aplica el límite de `Vacancy.availableSlots` — ver **§8.6** para la regla de negocio completa. Es la única vía de escritura para `ApplicationStatus` hoy; sigue sin existir un CRUD genérico de `/api/applications` (ver §8.5).
+
+| Parámetro              | Tipo                          | Requerido |
+| ----------------------- | ----------------------------- | --------- |
+| `vacancyId` (path)      | `number` (positivo)           | Sí        |
+| `candidateId` (path)    | `number` (positivo)           | Sí        |
+| `status` (body)         | `ApplicationStatus` (string)  | Sí        |
+
+**Respuesta 200:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "application": { /* Application actualizada */ },
+    "vacancy": { "id": 1, "availableSlots": 2, "status": "ACTIVE" }
+  }
+}
+```
+
+Nota: este endpoint **no** usa `sendResponseOr404` — la respuesta es `{ success, data }` directamente, sin doble envoltura (a diferencia de `PATCH /:id/status` arriba).
+
+**Errores:**
+| Código | Causa |
+|---|---|
+| 400 | Valor de `status` inválido, o `vacancyId`/`candidateId` inválido |
+| 404 | La vacante no existe/no pertenece al usuario, o el candidato no tiene `Application` para esta vacante |
+| 409 | La vacante ya está `CLOSED`, o se envía `status: "SELECCIONADO"` pero `availableSlots` ya está completo (ver §8.6) |
+| 500 | Error interno no manejado |
+
 ### `PUT /api/vacancies/:id`
 
 **Actualización parcial real** (mismo comportamiento que Posiciones — ver sección 8).
@@ -472,9 +504,22 @@ Todas las relaciones entre entidades (`Position.departmentId`, `Vacancy.departme
 - Cualquier otro error no controlado → `500`. En producción (`NODE_ENV=production`) el mensaje siempre es `"Internal server error"`, sin detalle interno; en desarrollo se muestra el mensaje real para debugging.
 - El frontend **no debe** parsear el texto de `error` en un `500` para tomar decisiones de negocio — solo para logging.
 
-### 8.5 `Application` — sin endpoint dedicado, pero activa desde 2026-07-13
+### 8.5 `Application` — sin CRUD genérico, pero escrita/leída activamente desde 2026-07-13
 
-~~`Application` está definida en `prisma/schema.prisma` (con `ApplicationStatus`) pero no tiene rutas ni controlador activos en la API actual.~~ **Parcialmente superado (2026-07-13):** `Application(candidateId, vacancyId)` ahora se escribe internamente desde `POST /api/vacancies/:id/upload` (vinculando un candidato reutilizado a una nueva vacante) y se lee desde `POST /api/vacancies/:id/evaluations` (para saber qué candidatos están pendientes en una vacante) — ver sección 4. Sigue sin existir un endpoint dedicado `/api/applications` para leer/escribir registros `Application` directamente, pero `ApplicationStatus` ya no está totalmente oculto: `GET /api/vacancies/:id/results` lo expone en modo lectura, anidado como `candidate.applications[0].status` (ver sección 4). Escribir/actualizar registros `Application` directamente sigue sin tener ruta.
+~~`Application` está definida en `prisma/schema.prisma` (con `ApplicationStatus`) pero no tiene rutas ni controlador activos en la API actual.~~ **Parcialmente superado (2026-07-13):** `Application(candidateId, vacancyId)` ahora se escribe internamente desde `POST /api/vacancies/:id/upload` (vinculando un candidato reutilizado a una nueva vacante) y se lee desde `POST /api/vacancies/:id/evaluations` (para saber qué candidatos están pendientes en una vacante) — ver sección 4. `GET /api/vacancies/:id/results` expone `ApplicationStatus` en modo lectura, anidado como `candidate.applications[0].status` (ver sección 4).
+
+**Actualizado 2026-07-23:** `PATCH /api/vacancies/:vacancyId/candidates/:candidateId/status` (sección 4) ahora permite que el frontend cambie el `ApplicationStatus` de un candidato para una vacante puntual directamente — es la vía de escritura referenciada en §8.6. Sigue sin existir un recurso genérico `/api/applications` (sin listar/crear/borrar registros `Application` por su propio id) — este endpoint está acotado a un candidato dentro de una vacante, no es un CRUD completo.
+
+### 8.6 Cupos de la vacante y auto-cierre (agregado 2026-07-23)
+
+Esta es una regla deliberadamente mínima, **no pensada para escalar a alta concurrencia**, agregada para cerrar el vacío donde una vacante nunca se cerraba sola al llenarse todos sus `availableSlots`:
+
+- Solo se verifica contra `Vacancy.availableSlots` la transición de `Application.status` **hacia** `"SELECCIONADO"`. Cualquier otra transición (`PENDIENTE`/`EN_PROCESO`/`RECHAZADO`, o reconfirmar a un candidato ya `SELECCIONADO`) nunca toca el conteo de cupos.
+- El chequeo cuenta los registros `Application` existentes con `status: "SELECCIONADO"` para esa vacante. Si el conteo ya es `>= availableSlots`, la solicitud se rechaza con `409` y **no se escribe nada** — el estado del candidato queda igual que antes de la llamada.
+- Si aceptar a este candidato completa `availableSlots`, el `status` de la vacante se pone en `"CLOSED"` en la **misma transacción** que la actualización de `Application` (`prisma.$transaction`, con la fila de `Vacancy` bloqueada vía `SELECT ... FOR UPDATE` durante toda la operación, para que dos intentos de contratación casi simultáneos sobre la misma vacante no puedan pasar ambos el chequeo de cupos).
+- **Mientras la vacante esté `CLOSED`, este endpoint rechaza *cualquier* cambio de estado de candidato con `409`** — no solo nuevas selecciones — hasta que la vacante se reactive.
+- **Nunca se reabre automáticamente.** Sacar a un candidato de `SELECCIONADO` (liberando un cupo) no reabre una vacante `CLOSED`. Reabrir siempre es una acción manual y explícita: `PATCH /api/vacancies/:id/status` (`ACTIVE`) — este endpoint nunca escribe `Vacancy.status` de vuelta a `ACTIVE`.
+- **Subir `availableSlots` tampoco reabre una vacante `CLOSED`.** `PUT /api/vacancies/:id` puede aumentar `availableSlots` (es un patch real, §8.2), pero si la vacante está `CLOSED` eso debe acompañarse de un `PATCH .../status` → `ACTIVE` manual para poder aceptar a alguien en los nuevos cupos.
 
 ---
 

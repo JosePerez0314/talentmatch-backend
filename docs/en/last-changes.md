@@ -22,6 +22,7 @@ All commits referenced below are on branch `test/departments`.
 - [12. `npm test upload`: 100-CV upload throughput benchmark](#12-npm-test-upload-100-cv-upload-throughput-benchmark)
 - [13. `pdf-parse` retry to stop dropping CVs on transient errors](#13-pdf-parse-retry-to-stop-dropping-cvs-on-transient-errors)
 - [14. `CLAUDE.md` updated to document the testing overhaul](#14-claudemd-updated-to-document-the-testing-overhaul)
+- [15. New endpoint: candidate status change with vacancy slot enforcement](#15-new-endpoint-candidate-status-change-with-vacancy-slot-enforcement)
 
 ---
 
@@ -249,3 +250,23 @@ Two things surfaced while writing the Departments tests that were **not** change
 **Commit:** (this changelog commit)
 
 `CLAUDE.md`'s **Testing** section was extended to describe everything above so future sessions have an accurate reference: the `src/tests/` layout and helper location, the `npm test <name>` runner (target guard, Windows-safe name anchoring, single-test flags), the opt-in external-service prompt and the `--external`/`--no-external` flags, the runtime overlay of real OpenAI/Cloudinary keys from `.env` (and why the DB guard stays authoritative), the `npm test upload` benchmark (perf-file auto-config, `KEEP_TEST_DATA`, the 100-file cap, the keep-last-100 cleanup), and the `pdf-parse` retry in `src/lib/pdfWrapper.ts`.
+
+---
+
+## 15. New endpoint: candidate status change with vacancy slot enforcement
+
+**Files:** `src/validations/vacancy.validation.ts`, `src/controllers/vacancies.controller.ts`, `src/routes/vacancies.ts`, `src/tests/routes/vacancies.test.ts`
+**Commit:** _pending — not yet committed on this branch (`fix/scoring-engine-logic`)_
+
+**The problem:** a vacancy's `availableSlots` was captured on create/update but never actually enforced anywhere. There was no way to mark a candidate as hired (`Application.status: "SELECCIONADO"`) at all, and consequently no code path ever closed a vacancy once its slots were full — the field was purely decorative.
+
+**What changed:** a new endpoint, `PATCH /api/vacancies/:vacancyId/candidates/:candidateId/status`, is the first write path for `ApplicationStatus`:
+
+- Validates that the vacancy belongs to the requesting user and that the candidate has an `Application` for that specific vacancy — `404` otherwise.
+- Rejects any status change with `409` while the vacancy is already `CLOSED`.
+- Only a transition *into* `SELECCIONADO` is checked against `availableSlots` (re-confirming an already-`SELECCIONADO` candidate, or any other status transition, never touches the slot count) — `409 "No available slots left for this vacancy"` if already full, with nothing written.
+- If accepting this candidate fills the last slot, the vacancy's `status` is set to `CLOSED` in the same `prisma.$transaction` as the `Application` update.
+- The vacancy row is locked for the duration of the transaction (`SELECT ... FOR UPDATE` via `tx.$queryRaw`) so two near-simultaneous hire attempts on the same vacancy can't both pass the slot check before either commits.
+- **Deliberately out of scope (by design, not an oversight):** no automatic reopening. Freeing a slot (moving a candidate out of `SELECCIONADO`) never reopens a `CLOSED` vacancy, and neither does raising `availableSlots` via `PUT /api/vacancies/:id`. Reopening is always the existing manual `PATCH /api/vacancies/:id/status` → `ACTIVE`. This keeps the change minimal and avoids surprising side effects; see `api-documentation.md` §8.6 for the full rule as documented for the frontend.
+
+**Tests added:** 11 new cases in `vacancies.test.ts` covering the happy path, auto-close on the last slot, no-close while slots remain, the `409` rejection (and that the rejected write never persists), idempotent re-selection, the `409` on an already-`CLOSED` vacancy, 404s (missing `Application`, missing/foreign vacancy), the `400` validation case, and the `401` case. `seedVacancy`'s test helper gained an optional `availableSlots` parameter (default `1`, so every existing call site is unaffected) and a new `seedApplication` helper was added.
