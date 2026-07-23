@@ -256,17 +256,54 @@ La sección **Testing** de `CLAUDE.md` se extendió para describir todo lo de ar
 ## 15. Endpoint nuevo: cambio de estado de candidato con control de cupos de la vacante
 
 **Archivos:** `src/validations/vacancy.validation.ts`, `src/controllers/vacancies.controller.ts`, `src/routes/vacancies.ts`, `src/tests/routes/vacancies.test.ts`
-**Commit:** _pendiente — todavía no commiteado en esta rama (`fix/scoring-engine-logic`)_
+**Rama:** `feat/vacancy-candidate-status` (creada desde `main` después del PR #148)
+**Commits:** `c3fcefb feat(vacancies): enforce slot limits and add candidate status endpoint`, `05bffe7 docs(vacancies): document candidate status endpoint and slot enforcement rule`
 
 **El problema:** `availableSlots` de una vacante se guardaba al crear/actualizar pero nunca se aplicaba en ningún lado. No existía forma de marcar a un candidato como contratado (`Application.status: "SELECCIONADO"`), y por lo tanto ningún camino de código cerraba una vacante al llenarse sus cupos — el campo era puramente decorativo.
 
-**Qué cambió:** un endpoint nuevo, `PATCH /api/vacancies/:vacancyId/candidates/:candidateId/status`, es la primera vía de escritura para `ApplicationStatus`:
+**Endpoint nuevo (contrato completo, para integración del frontend):**
 
-- Valida que la vacante pertenezca al usuario que hace la solicitud y que el candidato tenga una `Application` para esa vacante puntual — `404` si no.
-- Rechaza cualquier cambio de estado con `409` mientras la vacante ya esté `CLOSED`.
-- Solo se verifica contra `availableSlots` una transición *hacia* `SELECCIONADO` (reconfirmar a un candidato ya `SELECCIONADO`, o cualquier otra transición de estado, nunca toca el conteo de cupos) — `409 "No available slots left for this vacancy"` si ya está lleno, sin escribir nada.
-- Si aceptar a este candidato llena el último cupo, el `status` de la vacante se pone en `CLOSED` dentro de la misma `prisma.$transaction` que la actualización de `Application`.
-- La fila de la vacante se bloquea durante toda la transacción (`SELECT ... FOR UPDATE` vía `tx.$queryRaw`) para que dos intentos de contratación casi simultáneos sobre la misma vacante no puedan pasar ambos el chequeo de cupos antes de que uno confirme.
-- **Fuera de alcance a propósito (por diseño, no un descuido):** no hay reapertura automática. Liberar un cupo (sacar a un candidato de `SELECCIONADO`) nunca reabre una vacante `CLOSED`, y tampoco lo hace subir `availableSlots` vía `PUT /api/vacancies/:id`. Reabrir siempre es el `PATCH /api/vacancies/:id/status` → `ACTIVE` manual que ya existía. Esto mantiene el cambio mínimo y evita efectos secundarios inesperados; ver `api-documentation.md` §8.6 para la regla completa documentada para el frontend.
+`PATCH /api/vacancies/:vacancyId/candidates/:candidateId/status`
+
+Misma autenticación que el resto de `/api/vacancies` — `Authorization: Bearer <token>`, acotado a `req.user.id`.
+
+Body de la request:
+
+```json
+{ "status": "PENDIENTE" | "EN_PROCESO" | "SELECCIONADO" | "RECHAZADO" }
+```
+
+Respuesta `200`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "application": { "id": 1, "candidateId": 1, "vacancyId": 1, "status": "SELECCIONADO", "createdAt": "...", "updatedAt": "..." },
+    "vacancy": { "id": 1, "availableSlots": 2, "status": "ACTIVE" }
+  }
+}
+```
+
+**No va doble-envuelto** — a diferencia de `PATCH /api/vacancies/:id/status` (que pasa por `sendResponseOr404` y devuelve `{ response: { success, data } }`), este devuelve `{ success, data }` directamente.
+
+Respuestas de error (todas `{ success: false, error: "<mensaje>" }`, más el array `details[]` estándar en el `400`):
+
+| Código | Cuándo | Mensaje `error` |
+| --- | --- | --- |
+| 400 | `status` inválido, o `vacancyId`/`candidateId` inválido | `"Validation error"` |
+| 404 | la vacante no existe o no pertenece al usuario | `"Vacancy not found or unauthorized"` |
+| 404 | el candidato no tiene `Application` para esta vacante | `"Candidate is not linked to this vacancy"` |
+| 409 | la vacante ya está `CLOSED` | `"This vacancy is closed; candidate status can no longer be changed"` |
+| 409 | `availableSlots` ya se alcanzó (solo se chequea en una transición *hacia* `SELECCIONADO`) | `"No available slots left for this vacancy"` |
+
+**Comportamiento que el frontend necesita saber:**
+
+- Solo se verifica contra `availableSlots` una transición *hacia* `SELECCIONADO` — reconfirmar a un candidato ya `SELECCIONADO`, o cualquier otra transición (`PENDIENTE`/`EN_PROCESO`/`RECHAZADO`), nunca toca el conteo de cupos ni devuelve el error `409` de "sin cupos".
+- Si aceptar a este candidato llena el último cupo, `data.vacancy.status` viene `"CLOSED"` en la **misma respuesta** — el frontend no necesita una segunda request para saber que la vacante se acaba de cerrar. Usa eso para deshabilitar de inmediato más acciones de "contratar" en esa vacante en la UI, en vez de esperar a que la siguiente falle con `409`.
+- **Nunca se reabre automáticamente.** Una vez que `data.vacancy.status` es `"CLOSED"`, cualquier llamada posterior a este endpoint para esa vacante devuelve `409`, sin importar qué candidato/estado se envíe. Ni des-seleccionar a un candidato contratado ni subir `availableSlots` vía `PUT /api/vacancies/:id` la reabre. Si el reclutador quiere reabrirla, el frontend debe llamar al `PATCH /api/vacancies/:id/status` ya existente con `{ "status": "ACTIVE" }` explícitamente — es una acción separada y deliberada, este endpoint nunca la dispara solo.
+- Concurrencia: dos intentos de contratación casi simultáneos sobre la *misma* vacante no pueden pasar ambos el chequeo de cupos (la fila `Vacancy` se bloquea durante toda la transacción) — el que pierde recibe el `409` de arriba, no un estado corrupto.
 
 **Tests agregados:** 11 casos nuevos en `vacancies.test.ts` que cubren el happy path, el auto-cierre en el último cupo, el no-cierre mientras quedan cupos, el rechazo `409` (y que la escritura rechazada nunca se persiste), la re-selección idempotente, el `409` sobre una vacante ya `CLOSED`, los 404 (`Application` faltante, vacante inexistente/ajena), el caso de validación `400` y el caso `401`. El helper de test `seedVacancy` recibió un parámetro opcional `availableSlots` (default `1`, así que ningún llamado existente se ve afectado) y se agregó un helper nuevo `seedApplication`.
+
+**Detalle completo de la regla de negocio:** `api-documentation.md` §8.6 (bilingüe, en/es).
