@@ -22,6 +22,7 @@ All commits referenced below are on branch `test/departments`.
 - [12. `npm test upload`: 100-CV upload throughput benchmark](#12-npm-test-upload-100-cv-upload-throughput-benchmark)
 - [13. `pdf-parse` retry to stop dropping CVs on transient errors](#13-pdf-parse-retry-to-stop-dropping-cvs-on-transient-errors)
 - [14. `CLAUDE.md` updated to document the testing overhaul](#14-claudemd-updated-to-document-the-testing-overhaul)
+- [15. New endpoint: candidate status change with vacancy slot enforcement](#15-new-endpoint-candidate-status-change-with-vacancy-slot-enforcement)
 
 ---
 
@@ -249,3 +250,60 @@ Two things surfaced while writing the Departments tests that were **not** change
 **Commit:** (this changelog commit)
 
 `CLAUDE.md`'s **Testing** section was extended to describe everything above so future sessions have an accurate reference: the `src/tests/` layout and helper location, the `npm test <name>` runner (target guard, Windows-safe name anchoring, single-test flags), the opt-in external-service prompt and the `--external`/`--no-external` flags, the runtime overlay of real OpenAI/Cloudinary keys from `.env` (and why the DB guard stays authoritative), the `npm test upload` benchmark (perf-file auto-config, `KEEP_TEST_DATA`, the 100-file cap, the keep-last-100 cleanup), and the `pdf-parse` retry in `src/lib/pdfWrapper.ts`.
+
+---
+
+## 15. New endpoint: candidate status change with vacancy slot enforcement
+
+**Files:** `src/validations/vacancy.validation.ts`, `src/controllers/vacancies.controller.ts`, `src/routes/vacancies.ts`, `src/tests/routes/vacancies.test.ts`
+**Branch:** `feat/vacancy-candidate-status` (branched off `main` after PR #148)
+**Commits:** `c3fcefb feat(vacancies): enforce slot limits and add candidate status endpoint`, `05bffe7 docs(vacancies): document candidate status endpoint and slot enforcement rule`
+
+**The problem:** a vacancy's `availableSlots` was captured on create/update but never actually enforced anywhere. There was no way to mark a candidate as hired (`Application.status: "SELECCIONADO"`) at all, and consequently no code path ever closed a vacancy once its slots were full — the field was purely decorative.
+
+**New endpoint (full contract, for frontend integration):**
+
+`PATCH /api/vacancies/:vacancyId/candidates/:candidateId/status`
+
+Same auth as the rest of `/api/vacancies` — `Authorization: Bearer <token>`, scoped to `req.user.id`.
+
+Request body:
+
+```json
+{ "status": "PENDIENTE" | "EN_PROCESO" | "SELECCIONADO" | "RECHAZADO" }
+```
+
+Response `200`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "application": { "id": 1, "candidateId": 1, "vacancyId": 1, "status": "SELECCIONADO", "createdAt": "...", "updatedAt": "..." },
+    "vacancy": { "id": 1, "availableSlots": 2, "status": "ACTIVE" }
+  }
+}
+```
+
+**Not double-wrapped** — unlike `PATCH /api/vacancies/:id/status` (which goes through `sendResponseOr404` and returns `{ response: { success, data } }`), this one returns `{ success, data }` directly.
+
+Error responses (all `{ success: false, error: "<message>" }`, plus the standard `details[]` array for `400`):
+
+| Code | When | `error` message |
+| --- | --- | --- |
+| 400 | invalid `status`, or invalid `vacancyId`/`candidateId` | `"Validation error"` |
+| 404 | vacancy doesn't exist or doesn't belong to the user | `"Vacancy not found or unauthorized"` |
+| 404 | candidate has no `Application` for this vacancy | `"Candidate is not linked to this vacancy"` |
+| 409 | vacancy is already `CLOSED` | `"This vacancy is closed; candidate status can no longer be changed"` |
+| 409 | `availableSlots` already reached (only checked on a transition *into* `SELECCIONADO`) | `"No available slots left for this vacancy"` |
+
+**Behavior the frontend needs to know:**
+
+- Only a transition *into* `SELECCIONADO` is checked against `availableSlots` — re-confirming an already-`SELECCIONADO` candidate, or any other status transition (`PENDIENTE`/`EN_PROCESO`/`RECHAZADO`), never touches the slot count and never returns the `409` slots-full error.
+- If accepting this candidate fills the last slot, `data.vacancy.status` comes back `"CLOSED"` in the **same response** — the frontend doesn't need a second request to know the vacancy just closed. Use that to disable further "hire" actions for that vacancy in the UI immediately, rather than waiting for the next one to fail with `409`.
+- **No automatic reopening, ever.** Once `data.vacancy.status` is `"CLOSED"`, every further call to this endpoint for that vacancy returns `409` regardless of which candidate/status is sent. Neither un-selecting a hired candidate nor raising `availableSlots` via `PUT /api/vacancies/:id` reopens it. If the recruiter wants to reopen, the frontend must call the pre-existing `PATCH /api/vacancies/:id/status` with `{ "status": "ACTIVE" }` explicitly — that is a separate, deliberate action, not something this endpoint triggers.
+- Concurrency: two near-simultaneous hire attempts on the *same* vacancy can't both succeed past the slot check (the `Vacancy` row is locked for the duration of the transaction) — the loser gets the `409` above, not a corrupted state.
+
+**Tests added:** 11 new cases in `vacancies.test.ts` covering the happy path, auto-close on the last slot, no-close while slots remain, the `409` rejection (and that the rejected write never persists), idempotent re-selection, the `409` on an already-`CLOSED` vacancy, 404s (missing `Application`, missing/foreign vacancy), the `400` validation case, and the `401` case. `seedVacancy`'s test helper gained an optional `availableSlots` parameter (default `1`, so every existing call site is unaffected) and a new `seedApplication` helper was added.
+
+**Full business-rule writeup:** `api-documentation.md` §8.6 (bilingual, en/es).

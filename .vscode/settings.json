@@ -1,5 +1,6 @@
 {
   "prisma.pinToPrisma6": true,
   "python.terminal.activateEnvironment": false,
-  "postman.settings.dotenv-detection-notification-visibility": false
+  "postman.settings.dotenv-detection-notification-visibility": false,
+  "jest.runMode": "on-demand"
 }

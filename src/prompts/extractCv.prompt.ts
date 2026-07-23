@@ -25,6 +25,11 @@ export const extractCandidateData = async (
     });
 
     console.log(response.output_text);
+    if (response.usage) {
+      console.log(
+        `[extractCv] tokens — input: ${response.usage.input_tokens}, output: ${response.usage.output_tokens}, total: ${response.usage.total_tokens}`,
+      );
+    }
     return JSON.parse(response.output_text);
   } catch (error) {
     console.error("OpenAI API Error:", error);

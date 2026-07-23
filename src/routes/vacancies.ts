@@ -2,6 +2,7 @@ import express from "express";
 import upload from "../middlewares/upload/multerConfig.js";
 import { catchAsync } from "../lib/catchAsync.js";
 import {
+  changeCandidateStatus,
   changeStatus,
   deleteVacancy,
   evaluateCandidates,
@@ -18,6 +19,7 @@ import {
   updateVacancySchema,
   vacanciesParamsSchema,
   changeStatusSchema,
+  changeCandidateStatusSchema,
 } from "../validations/vacancy.validation.js";
 
 const router = express.Router();
@@ -51,6 +53,12 @@ router.patch(
   "/:id/status",
   validate(changeStatusSchema),
   catchAsync(changeStatus),
+);
+
+router.patch(
+  "/:vacancyId/candidates/:candidateId/status",
+  validate(changeCandidateStatusSchema),
+  catchAsync(changeCandidateStatus),
 );
 
 router.put("/:id", validate(updateVacancySchema), catchAsync(updateVacancy));
