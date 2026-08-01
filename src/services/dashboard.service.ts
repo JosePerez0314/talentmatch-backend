@@ -1,5 +1,6 @@
 import prisma from "../lib/prisma.js";
 import { Request } from "express";
+import { VacancyStatus } from "@prisma/client";
 import { StatusBreakdown, MonthlyActivity } from "../types/dashboard.types.js";
 
 // The function now accepts the Express 'req' object instead of a raw string
@@ -60,10 +61,10 @@ export async function getVacancyStatusBreakdown(
   );
 
   // 3. Define our baseline to guarantee the frontend always receives all 3 statuses
-  const defaultStatuses: ("ACTIVE" | "CLOSED" | "CONTACTING")[] = [
-    "ACTIVE",
-    "CLOSED",
-    "CONTACTING",
+  const defaultStatuses: VacancyStatus[] = [
+    VacancyStatus.ACTIVE,
+    VacancyStatus.PAUSED,
+    VacancyStatus.CLOSED,
   ];
 
   // 4. Map the database results and calculate percentages
