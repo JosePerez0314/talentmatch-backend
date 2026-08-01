@@ -91,16 +91,34 @@ type PositionControllers = (
 ) => Promise<void>;
 
 export const getPositions: PositionControllers = async (req, res, next) => {
-  const allPositions = await prisma.position.findMany({
-    where: {
-      userId: req.user!.id,
-    },
-    select: {
-      ...positionSelectObject,
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
+  const skip = (page - 1) * limit;
+
+  const where = { userId: req.user!.id };
+
+  const [allPositions, total] = await Promise.all([
+    prisma.position.findMany({
+      where,
+      skip,
+      take: limit,
+      select: {
+        ...positionSelectObject,
+      },
+    }),
+    prisma.position.count({ where }),
+  ]);
+
+  res.status(200).json({
+    success: true,
+    data: allPositions,
+    meta: {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
     },
   });
-
-  sendResponseOr404(res, allPositions, "Positions");
 };
 
 export const sendPositions: PositionControllers = async (req, res, next) => {

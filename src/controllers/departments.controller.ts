@@ -17,17 +17,37 @@ type DepartmentController = (
 ) => Promise<void>;
 
 export const getDepartments: DepartmentController = async (req, res, next) => {
-  const allDepartments = await prisma.department.findMany({
-    where: { userId: req.user!.id },
-    select: {
-      ...departmentSelectProject,
-      _count: {
-        select: { positions: true },
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
+  const skip = (page - 1) * limit;
+
+  const where = { userId: req.user!.id };
+
+  const [allDepartments, total] = await Promise.all([
+    prisma.department.findMany({
+      where,
+      skip,
+      take: limit,
+      select: {
+        ...departmentSelectProject,
+        _count: {
+          select: { positions: true },
+        },
       },
+    }),
+    prisma.department.count({ where }),
+  ]);
+
+  res.status(200).json({
+    success: true,
+    data: allDepartments,
+    meta: {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
     },
   });
-
-  sendResponseOr404(res, allDepartments, "Departments");
 };
 
 export const sendDepartments: DepartmentController = async (req, res, next) => {

@@ -53,7 +53,7 @@ export const getAllUsers: AdminController = async (req, res, next) => {
 
   // 2. PAGINATION: Protect the database from memory overload
   const page = parseInt(req.query.page as string, 10) || 1;
-  const limit = parseInt(req.query.limit as string, 10) || 50;
+  const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 100);
   const skip = (page - 1) * limit;
 
   const [users, totalCount] = await Promise.all([
