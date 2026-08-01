@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { ZodError } from "zod";
 import { Prisma } from "@prisma/client";
+import multer from "multer";
 
 interface HttpError extends Error {
   statusCode?: number;
@@ -37,6 +38,16 @@ export const errorHandler = (
         message: e.message,
       })),
     });
+    return;
+  }
+
+  if (err instanceof multer.MulterError) {
+    console.warn("[Global Error Logger]:", getMessage(err));
+    const message =
+      err.code === "LIMIT_FILE_SIZE"
+        ? "File is too large. Maximum size allowed is 5 MB."
+        : err.message;
+    res.status(400).json({ success: false, error: message });
     return;
   }
 

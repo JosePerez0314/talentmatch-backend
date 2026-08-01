@@ -12,7 +12,10 @@ const upload = multer({
     if (file.mimetype === "application/pdf") {
       cb(null, true);
     } else {
-      cb(new Error("Only PDF files are allowed!"));
+      interface HttpError extends Error { statusCode?: number }
+      const httpErr: HttpError = new Error("Only PDF files are allowed!");
+      httpErr.statusCode = 400;
+      cb(httpErr as Error);
     }
   },
 });
