@@ -149,24 +149,52 @@ export const getAllVacancies = async (
   res: Response,
   next: NextFunction,
 ) => {
-  const allVacancies = await prisma.vacancy.findMany({
-    where: {
-      userId: req.user!.id,
-    },
-    select: {
-      ...vacanciesSelectObject,
-      position: {
-        select: { id: true, role: true },
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
+  const skip = (page - 1) * limit;
+
+  const where = { userId: req.user!.id };
+
+  const [rawVacancies, total] = await Promise.all([
+    prisma.vacancy.findMany({
+      where,
+      skip,
+      take: limit,
+      select: {
+        ...vacanciesSelectObject,
+        position: {
+          select: { id: true, role: true },
+        },
+        _count: {
+          select: { applications: true },
+        },
+        applications: {
+          select: { candidate: true },
+        },
       },
-      _count: {
-        select: { candidates: true },
-      },
-      candidates: true,
+    }),
+    prisma.vacancy.count({ where }),
+  ]);
+
+  // Reshape so each vacancy exposes `candidates` (from Application join) and
+  // `_count.candidates` — same shape as before, but now includes candidates
+  // who were reused across vacancies via hash dedup (Application-linked only).
+  const allVacancies = rawVacancies.map(({ applications, _count, ...vacancy }) => ({
+    ...vacancy,
+    candidates: applications.map((a) => a.candidate),
+    _count: { candidates: _count.applications },
+  }));
+
+  res.status(200).json({
+    success: true,
+    data: allVacancies,
+    meta: {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
     },
   });
-
-  console.log("USER:", req.user);
-  sendResponseOr404(res, allVacancies, "Vacancies");
 };
 
 export const sendVacancies: VacancyController = async (req, res, next) => {
@@ -490,7 +518,7 @@ export const getOneVacancy: VacancyController = async (req, res, next) => {
 export const getVacancyResults: VacancyController = async (req, res, next) => {
   const id = req.params.id as unknown as number;
   const page = parseInt(req.query.page as string) || 1;
-  const limit = parseInt(req.query.limit as string) || 20;
+  const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
   const skip = (page - 1) * limit;
 
   const [allMatchResults, total] = await prisma.$transaction([

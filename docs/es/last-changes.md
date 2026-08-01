@@ -23,6 +23,9 @@ Todos los commits referenciados abajo están en la rama `test/departments`.
 - [13. Retry de `pdf-parse` para dejar de perder CVs en errores transitorios](#13-retry-de-pdf-parse-para-dejar-de-perder-cvs-en-errores-transitorios)
 - [14. `CLAUDE.md` actualizado para documentar la revisión del testing](#14-claudemd-actualizado-para-documentar-la-revisión-del-testing)
 - [15. Endpoint nuevo: cambio de estado de candidato con control de cupos de la vacante](#15-endpoint-nuevo-cambio-de-estado-de-candidato-con-control-de-cupos-de-la-vacante)
+- [16. Fix: lista y detalle de vacantes ahora incluyen datos de la posición](#16-fix-lista-y-detalle-de-vacantes-ahora-incluyen-datos-de-la-posición)
+- [17. Fix: scoping del hash de candidato por usuario y pipeline de evaluación basado en Application](#17-fix-scoping-del-hash-de-candidato-por-usuario-y-pipeline-de-evaluación-basado-en-application)
+- [18. Fix: motor de scoring — cuatro defectos corregidos](#18-fix-motor-de-scoring--cuatro-defectos-corregidos)
 
 ---
 
@@ -307,3 +310,83 @@ Respuestas de error (todas `{ success: false, error: "<mensaje>" }`, más el arr
 **Tests agregados:** 11 casos nuevos en `vacancies.test.ts` que cubren el happy path, el auto-cierre en el último cupo, el no-cierre mientras quedan cupos, el rechazo `409` (y que la escritura rechazada nunca se persiste), la re-selección idempotente, el `409` sobre una vacante ya `CLOSED`, los 404 (`Application` faltante, vacante inexistente/ajena), el caso de validación `400` y el caso `401`. El helper de test `seedVacancy` recibió un parámetro opcional `availableSlots` (default `1`, así que ningún llamado existente se ve afectado) y se agregó un helper nuevo `seedApplication`.
 
 **Detalle completo de la regla de negocio:** `api-documentation.md` §8.6 (bilingüe, en/es).
+
+---
+
+## 16. Fix: lista y detalle de vacantes ahora incluyen datos de la posición
+
+**Archivo:** `src/controllers/vacancies.controller.ts`
+**Commit:** `2386e9c fix(vacancies): include position role in list and detail responses` (PR #145)
+
+**El problema:** `GET /api/vacancies` y `GET /api/vacancies/:id` solo devolvían el FK crudo `positionId` — sin datos de posición anidados. La pantalla de resultados de vacante en el frontend necesita el rol de la posición para renderizarse correctamente, y no había forma de obtenerlo sin una segunda request a `GET /api/positions/:id`.
+
+**Qué cambió:** ambas queries de select ahora incluyen `position: { select: { id: true, role: true } }`. El objeto de posición `{ id, role }` aparece en el nivel raíz de cada vacante devuelta tanto por el listado como por el detalle.
+
+**Impacto:** `api-documentation.md` actualizado en ambos idiomas para reflejar el nuevo campo `position` en los shapes de respuesta de `GET /api/vacancies` y `GET /api/vacancies/:id`.
+
+---
+
+## 17. Fix: scoping del hash de candidato por usuario y pipeline de evaluación basado en Application
+
+**Archivos:** `prisma/schema.prisma`, `src/controllers/vacancies.controller.ts`, `src/services/cvProcessing.service.ts`, `.github/workflows/deploy.yml`
+**Commit:** `04a4ad4 Fix/candidate hash per user application` (PR #146)
+
+Este PR corrigió tres bugs distintos.
+
+### Bug 1 — Schema: unicidad global del hash causaba pérdida silenciosa de datos y filtración entre tenants
+
+`Candidate.hash` era `@unique` globalmente. Esto producía dos fallos:
+
+1. **Re-uso silencioso entre vacantes del mismo usuario.** Subir un CV que el usuario ya había subido a una vacante diferente hacía que el branch de dedup reutilizara el candidato existente *sin* crear una fila `Application` para la nueva vacante. El candidato nunca era visible para las evaluaciones de esa vacante.
+2. **Filtración de datos entre tenants.** Dos usuarios distintos subiendo exactamente el mismo PDF byte a byte resolverían a la fila `Candidate` del *primer* usuario. La evaluación del segundo usuario leería datos confidenciales que nunca subió.
+
+**Fix:** cambiado a `@@unique([userId, hash])` — la unicidad ahora está scopeada por usuario, no global. También se agregó el `onDelete: Cascade` faltante en ambas relaciones de `Application` (a `Candidate` y a `Vacancy`), requerido ahora que las filas de `Application` se escriben activamente y deben limpiarse junto con su padre.
+
+Se generó y aplicó una nueva migración de Prisma.
+
+### Bug 2 — Service/controller: la lógica de dedup y evaluación no usaba `Application`
+
+- `findExistingCandidateByCv` buscaba el hash sin acotar por `userId`, así que el chequeo cross-tenant del bug 1 tampoco disparaba a nivel del servicio.
+- Cuando una subida deduplicaba a un candidato existente, `uploadCandidate` retornaba sin crear un `Application` para la nueva vacante — el candidato quedaba invisible para ella.
+- `evaluateCandidates` obtenía sus candidatos pendientes de `Candidate.vacancyId` (un FK único), así que un candidato reutilizado solo se evaluaba en su *primera* vacante.
+
+**Fix:** `findExistingCandidateByCv` ahora acota la búsqueda del hash por `userId`. `uploadCandidate` hace upsert de una fila `Application` (`{ candidateId, vacancyId }`) cuando hay un hit de dedup, vinculando al candidato reutilizado con la nueva vacante. `evaluateCandidates` ahora lee candidatos pendientes desde `Application` (filtrado por `vacancyId` y `status: PENDIENTE`), así que un candidato que postuló a múltiples vacantes se evalúa independientemente en cada una.
+
+### Bug 3 — CI/CD: el paso de migración nunca corría silenciosamente en el VPS
+
+El job de deploy llamaba `docker compose exec -T backend-service-name npx prisma migrate deploy` con un nombre de servicio placeholder que nunca coincidía con el servicio real `api` en `docker-compose.yml`. El paso fallaba, pero el script de deploy no tenía `set -e`, así que seguía ejecutando hasta el `docker system prune -af` final y el job reportaba verde — lo que significaba que cada migración de esquema desde que se configuró CI/CD había sido silenciosamente omitida en el VPS.
+
+**Fix:** el nombre de servicio se corrige a `api` y se agrega `set -e` al script de deploy para que cualquier paso fallido aborte el job de inmediato con un fallo visible.
+
+---
+
+## 18. Fix: motor de scoring — cuatro defectos corregidos
+
+**Archivos:** `src/utils/scoringEngine.ts`, `src/validations/position.validation.ts`
+**Commit:** `f95b072 fix(scoring): correct experience floor, role matching and education ladder` (PR #148)
+
+El motor de scoring (`src/utils/scoringEngine.ts`) tenía cuatro defectos independientes que distorsionaban el ranking de candidatos. Sin cambios en schema ni migraciones — el enum `EducationLevel` de Prisma no se tocó.
+
+### Defecto 1 — Experiencia: el "lifesaver" estaba recortando puntajes, no elevándolos
+
+El branch "lifesaver" (crédito parcial por proyectos personales destacados) era mutuamente excluyente con el cálculo proporcional. Un candidato con 2.9 de 3 años requeridos *y* highlights de proyectos recibía `WEIGHTS.EXPERIENCE * 50 = 10 pts` — menos que los `19.3 pts` que ganaría solo con los años crudos, sin highlights.
+
+**Fix:** el valor proporcional se calcula primero (`proportionalScore = años / requeridos * weight`). El lifesaver aplica como piso con `Math.max(proportionalScore, WEIGHTS.EXPERIENCE * 50)` — solo puede elevar el puntaje, nunca reducirlo.
+
+### Defecto 2 — Rol: igualdad estricta penalizaba variaciones menores de redacción
+
+El match de rol usaba `===` después de pasar a minúsculas. Cualquier discrepancia semántica ("Backend Developer" vs "Senior Backend Developer") borraba los 15 puntos de rol completos, aunque el LLM que extrae el rol del candidato no puede garantizar paridad exacta con el string de la posición.
+
+**Fix:** reemplazado con contención bidireccional por substring (`candidateRole.includes(positionRole) || positionRole.includes(candidateRole)`), ambos recortados y en minúsculas. También se agregó una guarda contra strings vacíos: `"".includes("")` es `true`, así que sin ella un candidato sin rol recibiría los puntos completos de rol.
+
+### Defecto 3 — Educación: la escala ordinal tenía TECHNICAL por encima de BACHELOR
+
+El mapa `EDUCATION_LEVELS` rankeaba `TECHNICAL: 3, BACHELOR: 2`, que es el inverso de la jerarquía académica real. Un candidato con un certificado técnico puntearía *más alto* en la dimensión de educación que uno con un grado universitario de licenciatura.
+
+**Fix:** corregido a `TECHNICAL: 2, BACHELOR: 3`. Solo cambió esta constante — el orden de declaración del enum de Prisma es independiente de estos valores ordinales y no se tocó.
+
+### Defecto 4 — Arrays de requisitos vacíos: puntos gratis para todos los candidatos
+
+El motor trata un array de requisitos vacío como completamente satisfecho ("Suposición de Competencia"), otorgando a cada candidato el peso completo para esa dimensión. En lugar de complicar la función pura de scoring, el fix se mueve a la capa de validación: `softSkills` e `idiomas` ahora requieren **al menos un elemento** al crear una posición (`z.array(...).min(1)`), igualando la regla ya existente para `technicalSkills`. Esto evita que posiciones con arrays vacíos lleguen al motor.
+
+**Documentación corregida:** `backend-documentation.md`, `api-documentation.md`, `readme.md` y `context/scoring-engine.md` (ambos idiomas) se actualizaron para eliminar la descripción incorrecta de una regla "guillotina" (las hard skills no llevan un flag de obligatorio; una skill faltante solo cuesta su parte lineal proporcional, no una penalización pesada automática).

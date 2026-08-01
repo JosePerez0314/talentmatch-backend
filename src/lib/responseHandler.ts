@@ -22,5 +22,5 @@ export const sendResponseOr404 = <T>(
     data: data,
   };
 
-  return res.status(200).json({ response });
+  return res.status(200).json(response);
 };

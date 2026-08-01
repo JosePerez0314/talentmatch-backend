@@ -1,5 +1,7 @@
+import { VacancyStatus } from "@prisma/client";
+
 export interface StatusBreakdown {
-  status: "ACTIVE" | "CLOSED" | "CONTACTING";
+  status: VacancyStatus;
   count: number;
   percentage: number;
 }

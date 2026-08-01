@@ -23,6 +23,9 @@ All commits referenced below are on branch `test/departments`.
 - [13. `pdf-parse` retry to stop dropping CVs on transient errors](#13-pdf-parse-retry-to-stop-dropping-cvs-on-transient-errors)
 - [14. `CLAUDE.md` updated to document the testing overhaul](#14-claudemd-updated-to-document-the-testing-overhaul)
 - [15. New endpoint: candidate status change with vacancy slot enforcement](#15-new-endpoint-candidate-status-change-with-vacancy-slot-enforcement)
+- [16. Fix: vacancy list and detail now include position data](#16-fix-vacancy-list-and-detail-now-include-position-data)
+- [17. Fix: per-user candidate hash scoping and Application-based evaluation pipeline](#17-fix-per-user-candidate-hash-scoping-and-application-based-evaluation-pipeline)
+- [18. Fix: scoring engine — four defects corrected](#18-fix-scoring-engine--four-defects-corrected)
 
 ---
 
@@ -307,3 +310,83 @@ Error responses (all `{ success: false, error: "<message>" }`, plus the standard
 **Tests added:** 11 new cases in `vacancies.test.ts` covering the happy path, auto-close on the last slot, no-close while slots remain, the `409` rejection (and that the rejected write never persists), idempotent re-selection, the `409` on an already-`CLOSED` vacancy, 404s (missing `Application`, missing/foreign vacancy), the `400` validation case, and the `401` case. `seedVacancy`'s test helper gained an optional `availableSlots` parameter (default `1`, so every existing call site is unaffected) and a new `seedApplication` helper was added.
 
 **Full business-rule writeup:** `api-documentation.md` §8.6 (bilingual, en/es).
+
+---
+
+## 16. Fix: vacancy list and detail now include position data
+
+**File:** `src/controllers/vacancies.controller.ts`
+**Commit:** `2386e9c fix(vacancies): include position role in list and detail responses` (PR #145)
+
+**The problem:** `GET /api/vacancies` and `GET /api/vacancies/:id` only returned the raw `positionId` foreign key — no nested position data. The vacancy results screen in the frontend needs the position's role to render correctly, and there was no way to get it without an extra round-trip to `GET /api/positions/:id`.
+
+**What changed:** both select queries now include `position: { select: { id: true, role: true } }`. The position object `{ id, role }` appears at the top level of every vacancy returned by the list and the detail endpoints.
+
+**Impact:** `api-documentation.md` updated in both languages to reflect the new `position` field in the response shapes for `GET /api/vacancies` and `GET /api/vacancies/:id`.
+
+---
+
+## 17. Fix: per-user candidate hash scoping and Application-based evaluation pipeline
+
+**Files:** `prisma/schema.prisma`, `src/controllers/vacancies.controller.ts`, `src/services/cvProcessing.service.ts`, `.github/workflows/deploy.yml`
+**Commit:** `04a4ad4 Fix/candidate hash per user application` (PR #146)
+
+Three distinct bugs were fixed in this PR.
+
+### Bug 1 — Schema: global hash uniqueness caused silent data loss and a cross-tenant leak
+
+`Candidate.hash` was `@unique` globally. This produced two failures:
+
+1. **Silent re-use across vacancies of the same user.** Uploading a CV that a user had already uploaded to a different vacancy caused the dedup branch to reuse the existing candidate *without* creating an `Application` row for the new vacancy. The candidate was never visible to that vacancy's evaluations.
+2. **Cross-tenant data leak.** Two different users uploading the exact same PDF byte-for-byte would resolve to the *first* user's `Candidate` row. The second user's evaluation would read confidential data they never uploaded.
+
+**Fix:** switched to `@@unique([userId, hash])` — uniqueness is now scoped per user, not global. Also added the missing `onDelete: Cascade` on both `Application` relations (to `Candidate` and `Vacancy`), which is required now that `Application` rows are actively written and must clean up with their parent.
+
+A new Prisma migration was generated and applied.
+
+### Bug 2 — Service/controller: dedup and evaluation logic didn't use `Application`
+
+- `findExistingCandidateByCv` looked up the hash without scoping by `userId`, so the cross-tenant check in bug 1 never fired at the service layer either.
+- When an upload deduplicated to an existing candidate, `uploadCandidate` returned without creating an `Application` for the new vacancy — so the candidate remained invisible to it.
+- `evaluateCandidates` sourced its pending candidates from `Candidate.vacancyId` (a single FK), so a reused candidate was only ever evaluated in its *first* vacancy.
+
+**Fix:** `findExistingCandidateByCv` now scopes the hash lookup by `userId`. `uploadCandidate` upserts an `Application` row (`{ candidateId, vacancyId }`) when a dedup hit occurs, linking the reused candidate to the new vacancy. `evaluateCandidates` now reads pending candidates from `Application` (filtered by `vacancyId` and `status: PENDIENTE`), so a candidate that applied to multiple vacancies is independently evaluated in each one.
+
+### Bug 3 — CI/CD: migration step silently never ran on the VPS
+
+The deploy job called `docker compose exec -T backend-service-name npx prisma migrate deploy` with a placeholder service name that never matched the real `api` service in `docker-compose.yml`. The step failed, but the deploy script had no `set -e`, so it continued through to `docker system prune -af` and the job reported green — meaning every schema migration since CI/CD was set up had been silently skipped on the VPS.
+
+**Fix:** the service name is corrected to `api` and `set -e` is added to the deploy script so any failed step now aborts the job immediately with a visible failure.
+
+---
+
+## 18. Fix: scoring engine — four defects corrected
+
+**Files:** `src/utils/scoringEngine.ts`, `src/validations/position.validation.ts`
+**Commit:** `f95b072 fix(scoring): correct experience floor, role matching and education ladder` (PR #148)
+
+The scoring engine (`src/utils/scoringEngine.ts`) had four independent defects that distorted candidate ranking. No schema or migration changes — the `EducationLevel` Prisma enum is untouched.
+
+### Defect 1 — Experience: lifesaver was cutting scores, not raising them
+
+The "lifesaver" branch (partial credit for strong personal projects) was mutually exclusive with the proportional calculation. A candidate with 2.9 of 3 required years *and* project highlights would score `WEIGHTS.EXPERIENCE * 50 = 10 pts` — less than the `19.3 pts` they'd earn from raw years alone without highlights.
+
+**Fix:** the proportional value is computed first (`proportionalScore = years / required * weight`). The lifesaver then applies as a `Math.max(proportionalScore, WEIGHTS.EXPERIENCE * 50)` floor — it can only ever raise the score, never lower it.
+
+### Defect 2 — Role: strict equality punished minor wording drift
+
+Role match used `===` after lowercasing. Any semantic mismatch ("Backend Developer" vs "Senior Backend Developer") wiped out all 15 role points, even though the LLM extracting the candidate's role cannot guarantee exact parity with the position string.
+
+**Fix:** replaced with bidirectional substring containment (`candidateRole.includes(positionRole) || positionRole.includes(candidateRole)`), both trimmed and lowercased. An empty-string guard was also added: `"".includes("")` is `true`, so without it a candidate with no role at all would receive full role marks.
+
+### Defect 3 — Education: ordinal ladder had TECHNICAL above BACHELOR
+
+The `EDUCATION_LEVELS` map ranked `TECHNICAL: 3, BACHELOR: 2`, which is the inverse of the real academic hierarchy. A candidate with a technical certificate would score *higher* on the education dimension than one with a university bachelor's degree.
+
+**Fix:** corrected to `TECHNICAL: 2, BACHELOR: 3`. Only this constant changed — the Prisma enum declaration order is independent of these ordinal values and was not touched.
+
+### Defect 4 — Empty requirement arrays: free points for all candidates
+
+The engine treats an empty requirement array as fully satisfied ("Assumption of Competence"), awarding every candidate the full weight for that dimension. Rather than complicate the pure scoring function, the fix moves to the validation layer: `softSkills` and `languages` now require **at least one element** on position creation (`z.array(...).min(1)`), matching the existing rule for `technicalSkills`. This prevents positions with empty arrays from ever reaching the engine.
+
+**Documentation corrected:** `backend-documentation.md`, `api-documentation.md`, `readme.md`, and `context/scoring-engine.md` (both languages) were updated to remove the incorrect description of a "guillotine" rule (hard skills do not carry a mandatory flag; a missing skill only costs its proportional linear share, not an automatic heavy penalty).
