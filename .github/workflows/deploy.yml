@@ -119,5 +119,13 @@ jobs:
             # (service name must match docker-compose.yml's `api`, not a placeholder)
             docker compose -f docker-compose.yml exec -T api npx prisma migrate deploy
 
+            # 5.1. One-time backfill: create Application rows for candidates uploaded
+            # before the Application table was introduced (pre-2026-07-13).
+            # Runs only while scripts/backfill-applications.ts exists in the repo —
+            # delete the file once production confirms the backfill completed.
+            if [ -f scripts/backfill-applications.ts ]; then
+              docker compose -f docker-compose.yml exec -T api npx tsx scripts/backfill-applications.ts
+            fi
+
             # 6. Prevent server disk space starvation by purging old images
             docker system prune -af
