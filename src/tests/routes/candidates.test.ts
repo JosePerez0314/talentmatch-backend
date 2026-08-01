@@ -85,7 +85,7 @@ describe("GET /api/candidates", () => {
       .set("Authorization", tokenFor(owner));
 
     expect(res.status).toBe(200);
-    const candidates = res.body.response.data;
+    const candidates = res.body.data;
     expect(candidates).toHaveLength(1);
     expect(candidates[0].fullName).toBe("Alice Owner");
   });
@@ -103,7 +103,7 @@ describe("GET /api/candidates/:id", () => {
       .set("Authorization", tokenFor(owner));
 
     expect(res.status).toBe(200);
-    expect(res.body.response.data).toMatchObject({
+    expect(res.body.data).toMatchObject({
       id: candidate.id,
       fullName: "Alice Owner",
     });

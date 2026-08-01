@@ -119,7 +119,7 @@ describe("GET /api/dashboard", () => {
       .set("Authorization", tokenFor(owner));
 
     expect(res.status).toBe(200);
-    const data = res.body.response.data;
+    const data = res.body.data;
 
     expect(data.total).toEqual({
       positionsCount: 1,
@@ -174,7 +174,7 @@ describe("GET /api/dashboard", () => {
       .set("Authorization", tokenFor(owner));
 
     expect(res.status).toBe(200);
-    const data = res.body.response.data;
+    const data = res.body.data;
     expect(data.total.positionsCount).toBe(1);
     expect(data.total.departmentsCount).toBe(1);
     expect(data.total.openVacanciesCount).toBe(1);

@@ -227,7 +227,7 @@ describe("GET /api/positions", () => {
       .set("Authorization", tokenFor(owner));
 
     expect(res.status).toBe(200);
-    const positions = res.body.response.data;
+    const positions = res.body.data;
     expect(positions).toHaveLength(2);
     expect(positions.map((p: { role: string }) => p.role).sort()).toEqual([
       "Backend Developer",
@@ -278,7 +278,7 @@ describe("GET /api/positions/:id", () => {
       .set("Authorization", tokenFor(owner));
 
     expect(res.status).toBe(200);
-    expect(res.body.response.data).toMatchObject({
+    expect(res.body.data).toMatchObject({
       id: position.id,
       role: "Backend Developer",
     });
