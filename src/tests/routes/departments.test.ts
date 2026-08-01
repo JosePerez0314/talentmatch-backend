@@ -127,7 +127,7 @@ describe("GET /api/departments", () => {
 
     expect(res.status).toBe(200);
 
-    const departments = res.body.response.data;
+    const departments = res.body.data;
     expect(departments).toHaveLength(2);
     expect(departments.map((d: { title: string }) => d.title).sort()).toEqual([
       "Engineering",
@@ -156,7 +156,7 @@ describe("GET /api/departments/:id", () => {
       .set("Authorization", tokenFor(owner));
 
     expect(res.status).toBe(200);
-    expect(res.body.response.data).toMatchObject({
+    expect(res.body.data).toMatchObject({
       id: department.id,
       title: "Engineering",
     });
@@ -208,7 +208,7 @@ describe("PUT /api/departments/:id", () => {
       .send({ title: "Technology" });
 
     expect(res.status).toBe(200);
-    expect(res.body.response.data).toMatchObject({
+    expect(res.body.data).toMatchObject({
       id: department.id,
       title: "Technology",
     });

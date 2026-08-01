@@ -248,7 +248,7 @@ describe("GET /api/vacancies", () => {
       .set("Authorization", tokenFor(owner));
 
     expect(res.status).toBe(200);
-    expect(res.body.response.data).toHaveLength(2);
+    expect(res.body.data).toHaveLength(2);
   });
 });
 
@@ -314,7 +314,7 @@ describe("PATCH /api/vacancies/:id/status", () => {
       .send({ status: "PAUSED" });
 
     expect(res.status).toBe(200);
-    expect(res.body.response.data.status).toBe("PAUSED");
+    expect(res.body.data.status).toBe("PAUSED");
   });
 
   it("returns 400 for an invalid status value", async () => {
@@ -581,7 +581,7 @@ describe("PUT /api/vacancies/:id", () => {
       .send({ title: "Renamed Vacancy" });
 
     expect(res.status).toBe(200);
-    expect(res.body.response.data.title).toBe("Renamed Vacancy");
+    expect(res.body.data.title).toBe("Renamed Vacancy");
   });
 
   it("returns 400 when startDate is not before endDate", async () => {
