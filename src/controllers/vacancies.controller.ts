@@ -650,8 +650,15 @@ export const deleteVacancy: VacancyController = async (req, res, next) => {
     return;
   }
 
-  await prisma.vacancy.delete({
-    where: { id },
+  // MySQL InnoDB rejects a plain DELETE when two CASCADE paths both reach
+  // the Application table (Vacancy→Application and Vacancy→Candidate→Application).
+  // Explicitly delete dependents in FK-safe order inside a transaction so
+  // MySQL never has to resolve the ambiguous multi-path cascade.
+  await prisma.$transaction(async (tx) => {
+    await tx.matchResult.deleteMany({ where: { vacancyId: id } });
+    await tx.application.deleteMany({ where: { vacancyId: id } });
+    await tx.candidate.deleteMany({ where: { vacancyId: id } });
+    await tx.vacancy.delete({ where: { id } });
   });
 
   res.status(200).json({
