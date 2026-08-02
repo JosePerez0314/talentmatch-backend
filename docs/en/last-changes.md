@@ -26,6 +26,12 @@ All commits referenced below are on branch `test/departments`.
 - [16. Fix: vacancy list and detail now include position data](#16-fix-vacancy-list-and-detail-now-include-position-data)
 - [17. Fix: per-user candidate hash scoping and Application-based evaluation pipeline](#17-fix-per-user-candidate-hash-scoping-and-application-based-evaluation-pipeline)
 - [18. Fix: scoring engine — four defects corrected](#18-fix-scoring-engine--four-defects-corrected)
+- [19. Fix: uniform response shape — `sendResponseOr404` double-wrap removed](#19-fix-uniform-response-shape--sendresponseor404-double-wrap-removed)
+- [20. Fix: Multer file errors now return 400 instead of 500](#20-fix-multer-file-errors-now-return-400-instead-of-500)
+- [21. Fix: dashboard `vacancyStatusBreakdown` — CONTACTING replaced with PAUSED](#21-fix-dashboard-vacancystatusbreakdown--contacting-replaced-with-paused)
+- [22. Fix: pagination added to all major list endpoints](#22-fix-pagination-added-to-all-major-list-endpoints)
+- [23. Fix: `GET /api/vacancies` now sources candidates via Application join](#23-fix-get-apivacancies-now-sources-candidates-via-application-join)
+- [24. Fix: `DELETE /api/vacancies/:id` bypasses MySQL multi-path cascade](#24-fix-delete-apivacanciesid-bypasses-mysql-multi-path-cascade)
 
 ---
 
@@ -390,3 +396,93 @@ The `EDUCATION_LEVELS` map ranked `TECHNICAL: 3, BACHELOR: 2`, which is the inve
 The engine treats an empty requirement array as fully satisfied ("Assumption of Competence"), awarding every candidate the full weight for that dimension. Rather than complicate the pure scoring function, the fix moves to the validation layer: `softSkills` and `languages` now require **at least one element** on position creation (`z.array(...).min(1)`), matching the existing rule for `technicalSkills`. This prevents positions with empty arrays from ever reaching the engine.
 
 **Documentation corrected:** `backend-documentation.md`, `api-documentation.md`, `readme.md`, and `context/scoring-engine.md` (both languages) were updated to remove the incorrect description of a "guillotine" rule (hard skills do not carry a mandatory flag; a missing skill only costs its proportional linear share, not an automatic heavy penalty).
+
+---
+
+## 19. Fix: uniform response shape — `sendResponseOr404` double-wrap removed
+
+**File:** `src/lib/responseHandler.ts`
+**Branch/PR:** Fix/backend bugs resolution (PR #150)
+
+**The problem:** the `sendResponseOr404` helper responded with `{ response: { success: true, data: ... } }` on success — one extra nesting level compared to the `{ success, data }` shape used by every other controller in the API. Any consumer that didn't work around this inconsistency received an unexpected envelope.
+
+**What changed:** `res.status(200).json({ response })` was replaced with `res.status(200).json(response)`. The 404 error path was already correct.
+
+**Affected endpoints (now all return `{ success, data }` directly):** `GET /positions`, `GET /positions/:id`, `GET /candidates`, `GET /candidates/:id`, `GET /departments/*`, `PUT /departments/:id`, `DELETE /departments/:id`, `GET /vacancies`, `PATCH /vacancies/:id/status`, `PUT /vacancies/:id`, `GET /dashboard`.
+
+**Tests updated:** the 12 test assertions that previously used `res.body.response.data` were rewritten to `res.body.data` across `dashboard.test.ts`, `departments.test.ts`, `vacancies.test.ts`, `positions.test.ts`, and `candidates.test.ts`.
+
+---
+
+## 20. Fix: Multer file errors now return 400 instead of 500
+
+**Files:** `src/middlewares/upload/multerConfig.ts`, `src/middlewares/error/errorHandler.middleware.ts`
+**Branch/PR:** Fix/backend bugs resolution (PR #150)
+
+**The problem:** uploading a non-PDF or an oversized file to `POST /api/positions/complete` or `POST /api/vacancies/:id/upload` returned `500`. Two separate gaps:
+1. `multerConfig`'s file-type filter threw a generic `Error` with no `statusCode`, so the global handler fell through to its `500` branch.
+2. The global handler had no explicit branch for `multer.MulterError`, so size violations (code `LIMIT_FILE_SIZE`) also returned `500`.
+
+**What changed:**
+- `multerConfig.ts`: the file-type filter error now has `statusCode: 400` attached before being passed to `cb()`.
+- `errorHandler.middleware.ts`: added an explicit `multer.MulterError` branch after the `ZodError` block. `LIMIT_FILE_SIZE` → `"File is too large. Maximum size allowed is 5 MB."`, other Multer codes → the raw Multer message. Both cases respond `400`.
+
+---
+
+## 21. Fix: dashboard `vacancyStatusBreakdown` — CONTACTING replaced with PAUSED
+
+**Files:** `src/services/dashboard.service.ts`, `src/types/dashboard.types.ts`
+**Branch/PR:** Fix/backend bugs resolution (PR #150)
+
+**The problem:** `dashboard.service.ts` hardcoded the baseline status array as `["ACTIVE", "CLOSED", "CONTACTING"]`. `VacancyStatus` in `prisma/schema.prisma` is `ACTIVE | PAUSED | CLOSED` — `CONTACTING` does not exist. Result: the breakdown always showed a `CONTACTING: 0` entry and silently dropped all `PAUSED` vacancies.
+
+**What changed:**
+- `dashboard.service.ts`: `defaultStatuses` now uses the Prisma enum values `[VacancyStatus.ACTIVE, VacancyStatus.PAUSED, VacancyStatus.CLOSED]`.
+- `dashboard.types.ts`: the local `status` type in the dashboard breakdown was widened from a hardcoded union to `VacancyStatus` (with the proper import), so the type system enforces correctness going forward.
+
+---
+
+## 22. Fix: pagination added to all major list endpoints
+
+**Files:** `src/controllers/vacancies.controller.ts`, `src/controllers/positions.controller.ts`, `src/controllers/departments.controller.ts`, `src/controllers/candidates.controller.ts`, `src/controllers/admin.controller.ts`
+**Branch/PR:** Fix/backend bugs resolution (PR #150)
+
+**The problem:** most list endpoints returned every row in a single unbounded response. The two endpoints that already accepted `limit` (`GET /api/vacancies/:id/results`, `GET /api/admin/users`) had no clamp — a sufficiently large `limit` returned the entire table.
+
+**What changed:** all five controllers now enforce pagination:
+- `GET /api/positions`, `GET /api/vacancies`, `GET /api/candidates`: accept `page` (default `1`) and `limit` (default `20`, max `100`). Response gains `meta: { total, page, limit, totalPages }`.
+- `GET /api/vacancies/:id/results`: `limit` is now capped at `Math.min(parseInt(limit) || 20, 100)`.
+- `GET /api/admin/users`: `limit` is now capped at `Math.min(limit, 100)`.
+- `GET /api/departments` was left unpaginated — the list is small by design (10 seeded on signup plus user-created ones).
+
+---
+
+## 23. Fix: `GET /api/vacancies` now sources candidates via Application join
+
+**File:** `src/controllers/vacancies.controller.ts`
+**Branch/PR:** Fix/backend bugs resolution (PR #150)
+
+**The problem:** `getAllVacancies` queried `candidates: true` in the Prisma select, which resolves candidates by `Candidate.vacancyId` — the vacancy of the *original* upload. A candidate reused for a second vacancy via hash dedup (linked only through an `Application` row) was invisible in that second vacancy's `candidates` array, even after the `Application`-based fixes shipped in PR #146 made reused candidates evaluable there.
+
+**What changed:** the query now selects `applications: { select: { candidate: true } }` and reshapes the result to expose `candidates` as the flat array of `Candidate` objects from those `Application` rows. `_count.candidates` is similarly sourced from `_count.applications` so the count is consistent with what the array contains. A reused candidate now appears in every vacancy it applied to.
+
+---
+
+## 24. Fix: `DELETE /api/vacancies/:id` bypasses MySQL multi-path cascade
+
+**File:** `src/controllers/vacancies.controller.ts`
+**Commit:** `fix(vacancies): bypass MySQL multi-path cascade on vacancy delete` (PR #156)
+
+**The problem:** deleting a vacancy that had candidates (i.e. existing `Candidate` and `Application` rows) threw a Prisma/MySQL error. MySQL InnoDB does not support a `DELETE` that triggers CASCADE through two different paths to the same table:
+- Path A: `Vacancy → Application` (via `Application.vacancyId ON DELETE CASCADE`)
+- Path B: `Vacancy → Candidate → Application` (via `Candidate.vacancyId CASCADE` + `Application.candidateId CASCADE`)
+
+Both paths target `Application`, and MySQL rejects the ambiguity with a foreign key constraint error.
+
+**What changed:** `deleteVacancy` wraps the deletion in a `prisma.$transaction` that explicitly removes dependent rows in FK-safe order before the Vacancy itself:
+1. `tx.matchResult.deleteMany({ where: { vacancyId } })`
+2. `tx.application.deleteMany({ where: { vacancyId } })`
+3. `tx.candidate.deleteMany({ where: { vacancyId } })`
+4. `tx.vacancy.delete({ where: { id } })`
+
+MySQL never needs to resolve the multi-path cascade because there is nothing left to cascade when the Vacancy is finally deleted. No schema changes — this is a pure controller fix.

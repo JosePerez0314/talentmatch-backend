@@ -221,6 +221,8 @@ On failure it forwards the `ZodError` to the global handler, which returns a str
 | Thrown error | HTTP status | Body `error` |
 | --- | --- | --- |
 | `ZodError` | `400` | `"Validation error"` + `details[]` (field/message) |
+| `MulterError` with code `LIMIT_FILE_SIZE` | `400` | `"File is too large. Maximum size allowed is 5 MB."` |
+| Other `MulterError` | `400` | the Multer error message |
 | Prisma `P2002` (unique constraint) | `409` | `"A record with this data already exists"` |
 | Prisma `P2025` (record not found) | `404` | `"Record not found"` |
 | Other `PrismaClientValidationError` / known request error | `400` | `"Invalid data sent to the database"` |
@@ -229,21 +231,15 @@ On failure it forwards the `ZodError` to the global handler, which returns a str
 
 **Log severity matches real severity:** anything resolving to `5xx` (and the `headersSent` edge case) is logged via `console.error`; expected `4xx` client errors are logged via `console.warn`. In production (`NODE_ENV=production`) a `5xx` never leaks the internal message — it always returns `"Internal server error"`. In development the real message is returned to aid debugging.
 
-### Success response shapes (and a known inconsistency)
+### Success response shapes
 
-Most controllers respond directly:
+All controllers respond with a uniform envelope:
 
 ```json
 { "success": true, "data": { ... } }
 ```
 
-But endpoints that use the helper `sendResponseOr404` (`src/lib/responseHandler.ts`) **double-wrap** the success case:
-
-```json
-{ "response": { "success": true, "data": { ... } } }
-```
-
-and its 404 case returns `{ "success": false, "error": "<Entity> not found" }`. This inconsistency is intentional-for-now and documented; consumers should check the exact shape per endpoint in [`api-documentation.md`](./api-documentation.md). Validation errors always add a `details` array:
+Paginated list endpoints additionally include `meta: { total, page, limit, totalPages }` at the top level. The helper `sendResponseOr404` (`src/lib/responseHandler.ts`) uses the same shape — its 404 case returns `{ "success": false, "error": "<Entity> not found" }`. Validation errors always add a `details` array:
 
 ```json
 { "success": false, "error": "Validation error", "details": [{ "field": "…", "message": "…" }] }
@@ -385,10 +381,11 @@ The server listens on `http://localhost:<PORT>` (default `3000`).
 
 ## 19. CI/CD & deployment
 
-`.github/workflows/deploy.yml` runs on `main`:
+`.github/workflows/deploy.yml` runs on `main` with three sequential jobs:
 
-1. **Validation gate:** `npm ci` + `npm run type-check`. If the project doesn't compile, the pipeline stops here — **type-check is the deploy gate** (there is no test gate yet).
-2. **Deploy (only if the gate passes):** SSH into the VPS, `git reset --hard origin/main`, rebuild the image with `docker compose`, run `npx prisma migrate deploy` inside the running container, and prune old images.
+1. **Validation gate (`validate`):** `npm ci` + `npm run type-check`. Type errors stop the pipeline immediately.
+2. **Test gate (`test`, requires `validate`):** spins up an ephemeral MySQL 8 service container, applies all Prisma migrations to `talentmatch_test`, and runs the full route test suite (`src/tests/routes/`) excluding the external-service benchmark (`upload.test.ts`). A failing test prevents the deploy.
+3. **Deploy (`deploy`, requires both):** SSH into the VPS → `git reset --hard origin/main` → `docker compose build` → `docker compose up -d` → `npx prisma migrate deploy` inside the running `api` container → `docker system prune -af`.
 
 On the VPS **everything runs containerized** (backend + MySQL via `docker-compose.yml`), unlike local where only the DB is Dockerized.
 
@@ -397,8 +394,7 @@ On the VPS **everything runs containerized** (backend + MySQL via `docker-compos
 - **`educationArea` "NONE" rule:** on `POST /api/positions`, if `educationLevel` is `NONE`/`HIGH_SCHOOL` and `educationArea` is omitted, the backend auto-assigns `"N/A"` (never `null`/`""`). For the levels that require an area (`BACHELOR`…`DOCTORATE`), omitting it returns `400 "Education area is required for this education level"`. On `PUT` (partial update) an omitted `educationArea` is left untouched — the `"N/A"` sentinel is not re-applied. Frontends should render `"N/A"` as "Not applicable".
 - **`PUT` is a real partial patch:** on `PUT /api/positions/:id` and `PUT /api/vacancies/:id`, only fields present in the body are updated; omitted fields keep their stored value. To clear an optional array you must send it explicitly.
 - **`Department` delete cascades:** `Position.department` is `onDelete: Cascade`, so deleting a Department deletes its Positions instead of being blocked. Making deletion blocking would require an `onDelete: Restrict` schema change + a new migration.
-- **Response-shape inconsistency:** `sendResponseOr404` double-wraps success as `{ response: { success, data } }`; the rest return `{ success, data }`. Tracked, not yet unified.
-- **Multer errors surface as `500`:** a file-type/size/count violation throws a generic `Error`/`MulterError` with no `statusCode`, so the global handler falls through to `500` rather than a clean `4xx`. The limit *is* enforced; only the status code is imperfect.
+- **`DELETE /api/vacancies/:id` uses a `$transaction` for FK-safe cascade:** MySQL InnoDB rejects a plain `DELETE` on a vacancy that has candidates because two CASCADE paths both reach `Application` (`Vacancy→Application` directly, and `Vacancy→Candidate→Application` indirectly). The controller explicitly deletes `MatchResult`, `Application`, and `Candidate` rows inside a transaction before deleting the `Vacancy`.
 - **`Application` model has no generic CRUD endpoint:** actively written/read internally by the upload and evaluation pipeline (see [§11](#11-the-cv-processing-pipeline)), exposed read-only (nested `ApplicationStatus`) via `GET /api/vacancies/:id/results`, and — since 2026-07-23 — writable via `PATCH /api/vacancies/:vacancyId/candidates/:candidateId/status` (see `api-documentation.md` §8.6). There is still no `/api/applications` route to manage `Application` rows by their own id.
 - **Vacancy slot enforcement is intentionally minimal, not built for high concurrency:** the row lock used to serialize concurrent hires (`SELECT ... FOR UPDATE` on the `Vacancy` row inside `PATCH /api/vacancies/:vacancyId/candidates/:candidateId/status`) only protects a single vacancy's own hiring decisions from racing each other — it is a stopgap for the "vacancy never auto-closes" bug, not a scalable slot-reservation system. A closed vacancy never reopens automatically (neither by freeing a slot nor by raising `availableSlots`); reopening is always a manual `PATCH /api/vacancies/:id/status`.
 - **English-only code comments:** all inline/block/JSDoc comments must be in English, regardless of the working language (project convention).
