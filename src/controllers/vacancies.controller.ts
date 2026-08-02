@@ -7,6 +7,7 @@ import { findExistingCandidateByCv } from "../services/cvProcessing.service.js";
 import { assertCandidateIsCv } from "../services/candidateValidation.service.js";
 import {
   ApplicationStatus,
+  CandidateStatus,
   EducationLevel,
   VacancyStatus,
   Candidate,
@@ -737,6 +738,13 @@ export const changeCandidateStatus: VacancyController = async (
         where: { candidateId_vacancyId: { candidateId, vacancyId } },
         data: { status: status as ApplicationStatus },
       });
+
+      if (isNewSelection) {
+        await tx.candidate.update({
+          where: { id: candidateId },
+          data: { status: CandidateStatus.CONTRATADO },
+        });
+      }
 
       let vacancyStatus: VacancyStatus = vacancy.status;
 

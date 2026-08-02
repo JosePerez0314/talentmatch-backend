@@ -397,10 +397,15 @@ describe("PATCH /api/vacancies/:vacancyId/candidates/:candidateId/status", () =>
     expect(res.body.data.application.status).toBe("SELECCIONADO");
     expect(res.body.data.vacancy.status).toBe("CLOSED");
 
-    const persisted = await prisma.vacancy.findUnique({
+    const persistedVacancy = await prisma.vacancy.findUnique({
       where: { id: vacancy.id },
     });
-    expect(persisted!.status).toBe("CLOSED");
+    expect(persistedVacancy!.status).toBe("CLOSED");
+
+    const persistedCandidate = await prisma.candidate.findUnique({
+      where: { id: candidate.id },
+    });
+    expect(persistedCandidate!.status).toBe("CONTRATADO");
   });
 
   it("does not close the vacancy while slots remain", async () => {
