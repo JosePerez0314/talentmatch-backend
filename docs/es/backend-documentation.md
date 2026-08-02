@@ -221,6 +221,8 @@ Si falla, reenvía el `ZodError` al handler global, que devuelve un `400` estruc
 | Error lanzado | Status HTTP | `error` del body |
 | --- | --- | --- |
 | `ZodError` | `400` | `"Validation error"` + `details[]` (field/message) |
+| `MulterError` con código `LIMIT_FILE_SIZE` | `400` | `"File is too large. Maximum size allowed is 5 MB."` |
+| Otro `MulterError` | `400` | el mensaje del error Multer |
 | Prisma `P2002` (constraint único) | `409` | `"A record with this data already exists"` |
 | Prisma `P2025` (registro no encontrado) | `404` | `"Record not found"` |
 | Otro `PrismaClientValidationError` / known request error | `400` | `"Invalid data sent to the database"` |
@@ -229,21 +231,15 @@ Si falla, reenvía el `ZodError` al handler global, que devuelve un `400` estruc
 
 **La severidad del log coincide con la severidad real:** todo lo que resuelve a `5xx` (y el caso límite `headersSent`) se loguea con `console.error`; los errores de cliente `4xx` esperados se loguean con `console.warn`. En producción (`NODE_ENV=production`) un `5xx` nunca filtra el mensaje interno — siempre devuelve `"Internal server error"`. En desarrollo se devuelve el mensaje real para facilitar el debugging.
 
-### Formas de respuesta exitosa (y una inconsistencia conocida)
+### Formas de respuesta exitosa
 
-La mayoría de los controladores responde directamente:
+Todos los controladores responden con el mismo envelope uniforme:
 
 ```json
 { "success": true, "data": { ... } }
 ```
 
-Pero los endpoints que usan el helper `sendResponseOr404` (`src/lib/responseHandler.ts`) **envuelven doble** el caso de éxito:
-
-```json
-{ "response": { "success": true, "data": { ... } } }
-```
-
-y su caso 404 devuelve `{ "success": false, "error": "<Entidad> not found" }`. Esta inconsistencia es intencional-por-ahora y está documentada; los consumidores deben verificar la forma exacta por endpoint en [`api-documentation.md`](./api-documentation.md). Los errores de validación siempre agregan un array `details`:
+Los endpoints de listado paginados incluyen además `meta: { total, page, limit, totalPages }` en el nivel raíz. El helper `sendResponseOr404` (`src/lib/responseHandler.ts`) usa la misma forma — su caso 404 devuelve `{ "success": false, "error": "<Entidad> not found" }`. Los errores de validación siempre agregan un array `details`:
 
 ```json
 { "success": false, "error": "Validation error", "details": [{ "field": "…", "message": "…" }] }
@@ -385,10 +381,11 @@ El servidor escucha en `http://localhost:<PORT>` (por defecto `3000`).
 
 ## 19. CI/CD y despliegue
 
-`.github/workflows/deploy.yml` corre sobre `main`:
+`.github/workflows/deploy.yml` corre sobre `main` con tres jobs secuenciales:
 
-1. **Gate de validación:** `npm ci` + `npm run type-check`. Si el proyecto no compila, el pipeline se detiene aquí — **el type-check es el gate de despliegue** (aún no hay gate de tests).
-2. **Despliegue (solo si el gate pasa):** SSH al VPS, `git reset --hard origin/main`, reconstruir la imagen con `docker compose`, correr `npx prisma migrate deploy` dentro del contenedor activo y purgar imágenes viejas.
+1. **Gate de validación (`validate`):** `npm ci` + `npm run type-check`. Un error de tipos detiene el pipeline inmediatamente.
+2. **Gate de tests (`test`, requiere `validate`):** levanta un contenedor de servicio MySQL 8 efímero, aplica todas las migraciones de Prisma a `talentmatch_test` y corre la suite de tests de rutas completa (`src/tests/routes/`) excluyendo el benchmark de servicios externos (`upload.test.ts`). Un test fallido impide el despliegue.
+3. **Despliegue (`deploy`, requiere ambos):** SSH al VPS → `git reset --hard origin/main` → `docker compose build` → `docker compose up -d` → `npx prisma migrate deploy` dentro del contenedor `api` activo → `docker system prune -af`.
 
 En el VPS **todo corre contenerizado** (backend + MySQL vía `docker-compose.yml`), a diferencia de local donde solo la BD está dockerizada.
 
@@ -397,8 +394,7 @@ En el VPS **todo corre contenerizado** (backend + MySQL vía `docker-compose.yml
 - **Regla "NONE" de `educationArea`:** en `POST /api/positions`, si `educationLevel` es `NONE`/`HIGH_SCHOOL` y se omite `educationArea`, el backend asigna automáticamente `"N/A"` (nunca `null`/`""`). Para los niveles que sí requieren área (`BACHELOR`…`DOCTORATE`), omitirla devuelve `400 "Education area is required for this education level"`. En `PUT` (actualización parcial) un `educationArea` omitido se deja intacto — el sentinel `"N/A"` no se reaplica. Los frontends deben renderizar `"N/A"` como "No aplica".
 - **`PUT` es un parche parcial real:** en `PUT /api/positions/:id` y `PUT /api/vacancies/:id`, solo se actualizan los campos presentes en el body; los omitidos conservan su valor almacenado. Para vaciar un array opcional hay que enviarlo explícitamente.
 - **El borrado de `Department` cascadea:** `Position.department` es `onDelete: Cascade`, así que borrar un Departamento borra sus Posiciones en vez de bloquearse. Hacer el borrado bloqueante requeriría un cambio de esquema a `onDelete: Restrict` + una nueva migración.
-- **Inconsistencia en la forma de respuesta:** `sendResponseOr404` envuelve doble el éxito como `{ response: { success, data } }`; el resto devuelve `{ success, data }`. Registrado, aún no unificado.
-- **Los errores de Multer aparecen como `500`:** una violación de tipo/tamaño/cantidad de archivo lanza un `Error`/`MulterError` genérico sin `statusCode`, así que el handler global cae a `500` en vez de un `4xx` limpio. El límite **sí** se aplica; solo el status code es imperfecto.
+- **`DELETE /api/vacancies/:id` usa una `$transaction` para la cascada segura de FK:** MySQL InnoDB rechaza un `DELETE` simple sobre una vacante que tiene candidatos porque dos rutas CASCADE apuntan a `Application` (`Vacancy→Application` directo y `Vacancy→Candidate→Application` indirecto). El controlador elimina explícitamente `MatchResult`, `Application` y `Candidate` dentro de una transacción antes de borrar la `Vacancy`.
 - **El modelo `Application` no tiene endpoint CRUD genérico:** escrito/leído activamente de forma interna por el pipeline de subida y evaluación (ver [§11](#11-el-pipeline-de-procesamiento-de-cvs)), expuesto en modo lectura (`ApplicationStatus` anidado) vía `GET /api/vacancies/:id/results`, y — desde 2026-07-23 — escribible vía `PATCH /api/vacancies/:vacancyId/candidates/:candidateId/status` (ver `api-documentation.md` §8.6). Sigue sin existir una ruta `/api/applications` para gestionar filas `Application` por su propio id.
 - **El bloqueo de cupos de la vacante es deliberadamente mínimo, no pensado para alta concurrencia:** el lock de fila usado para serializar contrataciones concurrentes (`SELECT ... FOR UPDATE` sobre la fila `Vacancy` dentro de `PATCH /api/vacancies/:vacancyId/candidates/:candidateId/status`) solo protege las decisiones de contratación de una misma vacante entre sí — es un parche para el bug de "la vacante nunca se auto-cierra", no un sistema escalable de reserva de cupos. Una vacante cerrada nunca se reabre automáticamente (ni liberando un cupo ni subiendo `availableSlots`); reabrir siempre es un `PATCH /api/vacancies/:id/status` manual.
 - **Comentarios de código solo en inglés:** todos los comentarios inline/block/JSDoc deben estar en inglés, sin importar el idioma de trabajo (convención del proyecto).

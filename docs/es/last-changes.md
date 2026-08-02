@@ -26,6 +26,12 @@ Todos los commits referenciados abajo están en la rama `test/departments`.
 - [16. Fix: lista y detalle de vacantes ahora incluyen datos de la posición](#16-fix-lista-y-detalle-de-vacantes-ahora-incluyen-datos-de-la-posición)
 - [17. Fix: scoping del hash de candidato por usuario y pipeline de evaluación basado en Application](#17-fix-scoping-del-hash-de-candidato-por-usuario-y-pipeline-de-evaluación-basado-en-application)
 - [18. Fix: motor de scoring — cuatro defectos corregidos](#18-fix-motor-de-scoring--cuatro-defectos-corregidos)
+- [19. Fix: forma de respuesta uniforme — doble envoltura de `sendResponseOr404` eliminada](#19-fix-forma-de-respuesta-uniforme--doble-envoltura-de-sendresponseor404-eliminada)
+- [20. Fix: errores de archivo de Multer ahora devuelven 400 en vez de 500](#20-fix-errores-de-archivo-de-multer-ahora-devuelven-400-en-vez-de-500)
+- [21. Fix: dashboard `vacancyStatusBreakdown` — CONTACTING reemplazado por PAUSED](#21-fix-dashboard-vacancystatusbreakdown--contacting-reemplazado-por-paused)
+- [22. Fix: paginación agregada a todos los endpoints de listado principales](#22-fix-paginación-agregada-a-todos-los-endpoints-de-listado-principales)
+- [23. Fix: `GET /api/vacancies` ahora obtiene candidatos vía join de Application](#23-fix-get-apivacancies-ahora-obtiene-candidatos-vía-join-de-application)
+- [24. Fix: `DELETE /api/vacancies/:id` evita la cascada multi-ruta de MySQL](#24-fix-delete-apivacanciesid-evita-la-cascada-multi-ruta-de-mysql)
 
 ---
 
@@ -390,3 +396,93 @@ El mapa `EDUCATION_LEVELS` rankeaba `TECHNICAL: 3, BACHELOR: 2`, que es el inver
 El motor trata un array de requisitos vacío como completamente satisfecho ("Suposición de Competencia"), otorgando a cada candidato el peso completo para esa dimensión. En lugar de complicar la función pura de scoring, el fix se mueve a la capa de validación: `softSkills` e `idiomas` ahora requieren **al menos un elemento** al crear una posición (`z.array(...).min(1)`), igualando la regla ya existente para `technicalSkills`. Esto evita que posiciones con arrays vacíos lleguen al motor.
 
 **Documentación corregida:** `backend-documentation.md`, `api-documentation.md`, `readme.md` y `context/scoring-engine.md` (ambos idiomas) se actualizaron para eliminar la descripción incorrecta de una regla "guillotina" (las hard skills no llevan un flag de obligatorio; una skill faltante solo cuesta su parte lineal proporcional, no una penalización pesada automática).
+
+---
+
+## 19. Fix: forma de respuesta uniforme — doble envoltura de `sendResponseOr404` eliminada
+
+**Archivo:** `src/lib/responseHandler.ts`
+**Rama/PR:** Fix/backend bugs resolution (PR #150)
+
+**El problema:** el helper `sendResponseOr404` respondía con `{ response: { success: true, data: ... } }` en el caso de éxito — un nivel extra de anidamiento respecto al patrón `{ success, data }` usado en el resto de la API. Cualquier consumidor que no implementara un workaround para esta inconsistencia recibía un envelope inesperado.
+
+**Qué cambió:** `res.status(200).json({ response })` fue reemplazado por `res.status(200).json(response)`. El caso de error 404 ya era correcto.
+
+**Endpoints afectados (ahora todos devuelven `{ success, data }` directamente):** `GET /positions`, `GET /positions/:id`, `GET /candidates`, `GET /candidates/:id`, `GET /departments/*`, `PUT /departments/:id`, `DELETE /departments/:id`, `GET /vacancies`, `PATCH /vacancies/:id/status`, `PUT /vacancies/:id`, `GET /dashboard`.
+
+**Tests actualizados:** las 12 aserciones que antes usaban `res.body.response.data` fueron reescritas a `res.body.data` en `dashboard.test.ts`, `departments.test.ts`, `vacancies.test.ts`, `positions.test.ts` y `candidates.test.ts`.
+
+---
+
+## 20. Fix: errores de archivo de Multer ahora devuelven 400 en vez de 500
+
+**Archivos:** `src/middlewares/upload/multerConfig.ts`, `src/middlewares/error/errorHandler.middleware.ts`
+**Rama/PR:** Fix/backend bugs resolution (PR #150)
+
+**El problema:** subir un archivo que no fuera PDF o un archivo demasiado grande a `POST /api/positions/complete` o `POST /api/vacancies/:id/upload` devolvía `500`. Había dos brechas distintas:
+1. El filtro de tipo de archivo en `multerConfig` lanzaba un `Error` genérico sin `statusCode`, así que el handler global caía al branch de `500`.
+2. El handler global no tenía un branch explícito para `multer.MulterError`, así que las violaciones de tamaño (código `LIMIT_FILE_SIZE`) también devolvían `500`.
+
+**Qué cambió:**
+- `multerConfig.ts`: el error del filtro de tipo de archivo ahora tiene `statusCode: 400` adjunto antes de pasarse a `cb()`.
+- `errorHandler.middleware.ts`: se agregó un branch explícito para `multer.MulterError` después del block de `ZodError`. `LIMIT_FILE_SIZE` → `"File is too large. Maximum size allowed is 5 MB."`, otros códigos Multer → el mensaje crudo de Multer. Ambos casos responden `400`.
+
+---
+
+## 21. Fix: dashboard `vacancyStatusBreakdown` — CONTACTING reemplazado por PAUSED
+
+**Archivos:** `src/services/dashboard.service.ts`, `src/types/dashboard.types.ts`
+**Rama/PR:** Fix/backend bugs resolution (PR #150)
+
+**El problema:** `dashboard.service.ts` hardcodeaba el array de status base como `["ACTIVE", "CLOSED", "CONTACTING"]`. `VacancyStatus` en `prisma/schema.prisma` es `ACTIVE | PAUSED | CLOSED` — `CONTACTING` no existe. Resultado: el breakdown siempre mostraba una entrada `CONTACTING: 0` y dejaba caer silenciosamente todas las vacantes en `PAUSED`.
+
+**Qué cambió:**
+- `dashboard.service.ts`: `defaultStatuses` ahora usa los valores del enum de Prisma `[VacancyStatus.ACTIVE, VacancyStatus.PAUSED, VacancyStatus.CLOSED]`.
+- `dashboard.types.ts`: el tipo local de `status` en el breakdown se amplió de una unión hardcodeada a `VacancyStatus` (con el import correspondiente), para que el sistema de tipos garantice la corrección en el futuro.
+
+---
+
+## 22. Fix: paginación agregada a todos los endpoints de listado principales
+
+**Archivos:** `src/controllers/vacancies.controller.ts`, `src/controllers/positions.controller.ts`, `src/controllers/departments.controller.ts`, `src/controllers/candidates.controller.ts`, `src/controllers/admin.controller.ts`
+**Rama/PR:** Fix/backend bugs resolution (PR #150)
+
+**El problema:** la mayoría de los endpoints de listado devolvía todas las filas en una sola respuesta sin límite. Los dos endpoints que ya aceptaban `limit` (`GET /api/vacancies/:id/results`, `GET /api/admin/users`) no tenían ningún clamp — un `limit` suficientemente grande devolvía toda la tabla.
+
+**Qué cambió:** los cinco controladores ahora aplican paginación:
+- `GET /api/positions`, `GET /api/vacancies`, `GET /api/candidates`: aceptan `page` (default `1`) y `limit` (default `20`, máximo `100`). La respuesta gana `meta: { total, page, limit, totalPages }`.
+- `GET /api/vacancies/:id/results`: `limit` ahora se clampea con `Math.min(parseInt(limit) || 20, 100)`.
+- `GET /api/admin/users`: `limit` ahora se clampea con `Math.min(limit, 100)`.
+- `GET /api/departments` se dejó sin paginar — la lista es pequeña por diseño (10 departamentos creados al registrarse más los que el usuario agregue).
+
+---
+
+## 23. Fix: `GET /api/vacancies` ahora obtiene candidatos vía join de Application
+
+**Archivo:** `src/controllers/vacancies.controller.ts`
+**Rama/PR:** Fix/backend bugs resolution (PR #150)
+
+**El problema:** `getAllVacancies` consultaba `candidates: true` en el select de Prisma, que resuelve candidatos por `Candidate.vacancyId` — la vacante de la subida *original*. Un candidato reutilizado en una segunda vacante por dedup de hash (vinculado solo a través de una fila `Application`) era invisible en el array `candidates` de esa segunda vacante, aun después de que los fixes del PR #146 hacían al candidato reutilizado evaluable allí.
+
+**Qué cambió:** la query ahora selecciona `applications: { select: { candidate: true } }` y remodela el resultado para exponer `candidates` como el array plano de objetos `Candidate` de esas filas `Application`. `_count.candidates` también se obtiene de `_count.applications` para que el conteo sea consistente con lo que contiene el array. Un candidato reutilizado ahora aparece en cada vacante a la que aplicó.
+
+---
+
+## 24. Fix: `DELETE /api/vacancies/:id` evita la cascada multi-ruta de MySQL
+
+**Archivo:** `src/controllers/vacancies.controller.ts`
+**Commit:** `fix(vacancies): bypass MySQL multi-path cascade on vacancy delete` (PR #156)
+
+**El problema:** borrar una vacante que tenía candidatos (es decir, con filas `Candidate` y `Application` existentes) lanzaba un error de Prisma/MySQL. MySQL InnoDB no soporta un `DELETE` que dispare CASCADE a través de dos rutas distintas hacia la misma tabla:
+- Ruta A: `Vacancy → Application` (vía `Application.vacancyId ON DELETE CASCADE`)
+- Ruta B: `Vacancy → Candidate → Application` (vía `Candidate.vacancyId CASCADE` + `Application.candidateId CASCADE`)
+
+Ambas rutas apuntan a `Application`, y MySQL rechaza la ambigüedad con un error de foreign key constraint.
+
+**Qué cambió:** `deleteVacancy` envuelve la eliminación en un `prisma.$transaction` que borra explícitamente las filas dependientes en orden seguro de FK antes de la propia Vacancy:
+1. `tx.matchResult.deleteMany({ where: { vacancyId } })`
+2. `tx.application.deleteMany({ where: { vacancyId } })`
+3. `tx.candidate.deleteMany({ where: { vacancyId } })`
+4. `tx.vacancy.delete({ where: { id } })`
+
+MySQL nunca necesita resolver la cascada multi-ruta porque no queda nada que cascadear cuando finalmente se borra la Vacancy. Sin cambios de schema — es un fix puramente del controlador.

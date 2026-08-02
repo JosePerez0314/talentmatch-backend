@@ -26,13 +26,17 @@ El token se obtiene en `POST /api/users/login` y contiene `{ userId, role }`. El
 
 ### Formato estándar de respuesta exitosa
 
-La mayoría de los controladores responde:
+Todos los controladores responden con el mismo envelope uniforme:
 
 ```json
 { "success": true, "data": { ... } }
 ```
 
-> **Nota técnica:** los endpoints que usan el helper `sendResponseOr404` (ver sección 9) envuelven la respuesta un nivel adicional: `{ "response": { "success": true, "data": { ... } } }`. Verificar caso por caso en las tablas de abajo qué forma aplica a cada endpoint.
+Los endpoints de listado paginados incluyen además un objeto `meta` en el nivel raíz:
+
+```json
+{ "success": true, "data": [...], "meta": { "total": 0, "page": 1, "limit": 20, "totalPages": 0 } }
+```
 
 ### Formato estándar de error
 
@@ -168,9 +172,14 @@ Solo `id` en params.
 
 ### `GET /api/positions`
 
-Sin parámetros. Lista posiciones del usuario (campos seleccionados: `id, userId, departmentId, role, yearsOfExperience, technicalSkills, optionalTechnicalSkills, softSkills, languages, description, educationLevel, educationArea, createdAt` — **no incluye** `positionPdfUrl` ni `updatedAt`).
+Lista posiciones del usuario (campos seleccionados: `id, userId, departmentId, role, yearsOfExperience, technicalSkills, optionalTechnicalSkills, softSkills, languages, description, educationLevel, educationArea, createdAt` — **no incluye** `positionPdfUrl` ni `updatedAt`).
 
-**Paginación:** ninguna. `prisma.position.findMany` no usa `skip`/`take` — devuelve **todas** las posiciones que el usuario haya creado, en un solo array, sin aceptar parámetros `limit`/`page`. Un usuario con cientos de posiciones recibe todas en una sola respuesta.
+**Paginación:** opt-in mediante parámetros de query `page` (default `1`) y `limit` (default `20`, máximo `100`). Devuelve `{ success, data: Position[], meta: { total, page, limit, totalPages } }`.
+
+| Parámetro (query) | Tipo | Requerido | Default |
+| --- | --- | --- | --- |
+| `page` | `number` | No | 1 |
+| `limit` | `number` | No | 20 |
 
 ### `POST /api/positions`
 
@@ -258,9 +267,14 @@ Solo `id`. `404` si no existe/no pertenece al usuario.
 
 ### `GET /api/vacancies`
 
-Sin parámetros. Incluye `_count.candidates`, `candidates` completos, y `position: { id, role }` (**corregido 2026-07-13**: antes la respuesta solo traía el FK crudo `positionId`, sin datos anidados de la posición — el frontend no tenía forma de mostrar el rol de la posición sin una segunda request).
+Devuelve las vacantes del usuario con `_count.candidates`, el array completo de `candidates` (obtenido vía join de `Application` — incluye candidatos reutilizados entre vacantes, no solo los subidos originalmente a cada una), y `position: { id, role }` (**corregido 2026-07-13**: antes solo traía el FK crudo `positionId`).
 
-**Paginación:** ninguna, en ningún eje. `prisma.vacancy.findMany` devuelve **todas** las vacantes del usuario sin `skip`/`take`, y por cada vacante incrusta el array **completo** de `candidates` (cada registro `Candidate` vinculado a esa vacante — no solo `_count`, sino los registros completos con `rawApiPayload` incluido). Es la respuesta sin paginar más pesada de toda la API: el tamaño de la respuesta escala con la cantidad de vacantes **multiplicada** por candidatos-por-vacante. Una vacante con miles de CVs subidos hace que esta única respuesta crezca proporcionalmente — no existe parámetro `limit`/`page` para recortarla.
+**Paginación:** opt-in mediante `page` (default `1`) y `limit` (default `20`, máximo `100`). Devuelve `{ success, data: Vacancy[], meta: { total, page, limit, totalPages } }`.
+
+| Parámetro (query) | Tipo | Requerido | Default |
+| --- | --- | --- | --- |
+| `page` | `number` | No | 1 |
+| `limit` | `number` | No | 20 |
 
 ### `POST /api/vacancies`
 
@@ -294,7 +308,7 @@ Resultados de matching (IA) paginados.
 
 **Respuesta 200:** `{ success, data: MatchResult[], meta: { total, page, limit, totalPages } }`. Cada `MatchResult` incluye el desglose completo (`hardSkillsScore`, `experienceScore`, `roleScore`, `languagesScore`, `educationScore`, `softSkillsScore`), el snapshot congelado `normalizedCandidate`, `summary`, `redFlags`, y un `candidate` anidado: `{ id, fullName, email, fileUrl, applications: [{ status }] }` — este es actualmente el único lugar donde se expone `ApplicationStatus` al cliente (solo lectura, sin endpoint dedicado `/api/applications` — ver §8.5).
 
-> **Sin tope máximo en `limit`:** el controlador hace `parseInt(req.query.limit) || 20` sin ningún `Math.min`/clamp contra un tamaño de página máximo. Un cliente que envíe `?limit=100000` recibe todos los `MatchResult` de esa vacante en una sola "página". Usar `meta.total`/`meta.totalPages` para manejar la paginación real en la UI, en vez de asumir que 20 es un tope fijo.
+**`limit` tiene un tope de 100** — valores superiores se clampean silenciosamente a 100. Usar `meta.total`/`meta.totalPages` para manejar la paginación real en la UI.
 
 ### `POST /api/vacancies/:id/upload`
 
@@ -356,7 +370,7 @@ Ejecuta el motor de matching IA sobre cada `Application` de esta vacante que aú
 }
 ```
 
-Nota: este endpoint **no** usa `sendResponseOr404` — la respuesta es `{ success, data }` directamente, sin doble envoltura (a diferencia de `PATCH /:id/status` arriba).
+Este endpoint responde `{ success, data }` directamente (igual que todos los demás controladores).
 
 **Errores:**
 | Código | Causa |
@@ -378,6 +392,8 @@ Nota: este endpoint **no** usa `sendResponseOr404` — la respuesta es `{ succes
 
 Solo `id`. `404` si no existe/no pertenece al usuario.
 
+Internamente, la eliminación corre dentro de una `$transaction` que borra explícitamente los registros `MatchResult`, `Application` y `Candidate` en orden seguro de FK antes de eliminar la `Vacancy` — esto evita una restricción de MySQL InnoDB que impide el `DELETE` cuando dos rutas CASCADE apuntan a la misma tabla (`Application` es alcanzable tanto por `Vacancy→Application` como por `Vacancy→Candidate→Application`).
+
 ---
 
 ## 5. Candidatos — `/api/candidates`
@@ -388,7 +404,12 @@ Solo `id`. `404` si no existe/no pertenece al usuario.
 
 Lista candidatos del usuario (campos seleccionados, incluye `rawApiPayload`).
 
-**Paginación:** ninguna. `prisma.candidate.findMany` devuelve **todos** los candidatos subidos alguna vez por el usuario, sin `skip`/`take` y sin aceptar parámetros `page`/`limit`. Cada registro incluye además `rawApiPayload` (el JSON crudo que devolvió la IA por cada CV), que no es un campo pequeño — un usuario con historial extenso de candidatos recibe todo ese historial, payload incluido, en una sola respuesta.
+**Paginación:** opt-in mediante `page` (default `1`) y `limit` (default `20`, máximo `100`). Devuelve `{ success, data: Candidate[], meta: { total, page, limit, totalPages } }`.
+
+| Parámetro (query) | Tipo | Requerido | Default |
+| --- | --- | --- | --- |
+| `page` | `number` | No | 1 |
+| `limit` | `number` | No | 20 |
 
 ### `GET /api/candidates/:id`
 
@@ -421,7 +442,7 @@ Lista paginada de todos los usuarios del sistema.
 
 **Respuesta 200:** `{ success, data: { users: User[], meta: { totalCount, currentPage, totalPages } } }`.
 
-> **Sin tope máximo en `limit`:** mismo patrón que los resultados de vacantes — `parseInt(req.query.limit, 10) || 50` sin clamp. `?limit=999999` devuelve a todos los usuarios del sistema en una sola página. Ordenado de forma determinista por `createdAt desc`, así que las páginas no se desordenan entre requests mientras no se cree un usuario nuevo en el medio.
+**`limit` tiene un tope de 100.** Ordenado de forma determinista por `createdAt desc`, así que las páginas no se desordenan entre requests mientras no se cree un usuario nuevo en el medio.
 
 ### `PUT /api/admin/users/:id/role`
 
@@ -473,7 +494,7 @@ Sin parámetros.
 **Paginación y tamaño de los arrays — este endpoint no acepta parámetros `page`/`limit` en absoluto:**
 
 - `total`: no es un array — cuatro queries independientes de `count()`/agregación, siempre exactamente estas 4 claves.
-- `vacancyStatusBreakdown`: array de tamaño fijo, siempre 3 entradas (una por cada status "baseline" que el servicio hardcodea), sin importar cuántas vacantes tenga el usuario. **Inconsistencia detectada:** el baseline hardcodeado en `dashboard.service.ts` es `["ACTIVE", "CLOSED", "CONTACTING"]`, pero `VacancyStatus` en `prisma/schema.prisma` en realidad es `ACTIVE | PAUSED | CLOSED` — no existe ningún status `CONTACTING` en el schema, y `PAUSED` falta por completo de este breakdown. En la práctica: la entrada `"CONTACTING"` siempre reporta `count: 0, percentage: 0` (nunca puede matchear una fila real), y cualquier vacante que esté realmente en `PAUSED` queda excluida silenciosamente del breakdown (sí se cuenta en `total`, pero acá es invisible). No confiar en este array para reconciliar contra el status real de cada vacante hasta que esto se corrija.
+- `vacancyStatusBreakdown`: array de tamaño fijo, siempre 3 entradas — una por cada valor de `VacancyStatus`: `ACTIVE`, `PAUSED`, `CLOSED`. (**Corregido 2026-08-01**: el servicio antes hardcodeaba `"CONTACTING"` en lugar de `"PAUSED"`, provocando que las vacantes en `PAUSED` quedaran excluidas del breakdown y apareciera una entrada `"CONTACTING"` siempre en cero. El breakdown ahora refleja el schema exactamente.)
 - `monthlyActivity`: **sin límite, sin paginación** — una fila por cada mes calendario que tenga al menos un evento (position/CV/vacancy creado) desde el primer evento del usuario, calculado con un `GROUP BY DATE_FORMAT(createdAt, '%Y-%m')` en SQL crudo, ascendente. Para una cuenta de varios años, este array solo crece; no existe filtro de rango `from`/`to` ni tope de cuántos meses se devuelven.
 
 ---
@@ -527,15 +548,14 @@ Esta es una regla deliberadamente mínima, **no pensada para escalar a alta conc
 
 Documentado para que el frontend sepa a qué atenerse hoy, no a un comportamiento "ideal":
 
-1. **Doble envoltura en `sendResponseOr404`:** los endpoints que usan este helper para el caso de éxito devuelven `{ "response": { "success": true, "data": ... } }` (un nivel extra respecto al patrón `{ success, data }` usado en el resto de controladores). Afecta a: `GET /positions`, `GET /positions/:id`, `GET /candidates`, `GET /candidates/:id`, `GET /departments/*`, `PUT /departments/:id`, `DELETE /departments/:id`, `GET /vacancies`, `GET /vacancies/:id` (¹), `PATCH /vacancies/:id/status`, `PUT /vacancies/:id`, `GET /dashboard`.
-   (¹) `GET /vacancies/:id` en realidad no usa el helper — responde `{ success, data }` directo. Verificar caso por caso en esta tabla.
-2. ~~**`success: "false"` (string) en el caso 404 de `sendResponseOr404`**, en vez de `false` (booleano) como en el resto de la API.~~ **Corregido (2026-07-07):** `sendResponseOr404` ahora devuelve `success: false` como booleano también en el caso 404, consistente con el resto de la API. Un chequeo estricto (`response.success === false`) en frontend ya funciona correctamente para este caso.
-3. **Errores de tipo de archivo/tamaño en Multer no tienen `statusCode` asignado** (`multerConfig.js` lanza un `Error` genérico), por lo que hoy caen al branch de `500` del manejador global en vez de `400`, en `POST /positions/complete` y `POST /vacancies/:id/upload`.
+1. ~~**Doble envoltura en `sendResponseOr404`:** los endpoints que usaban este helper devolvían `{ "response": { "success": true, "data": ... } }`.~~ **Corregido (2026-08-01):** `sendResponseOr404` ahora responde `{ "success": true, "data": ... }` directamente — igual que el resto de controladores. Todos los endpoints devuelven ahora un envelope uniforme.
+2. ~~**`success: "false"` (string) en el caso 404 de `sendResponseOr404`**, en vez de `false` (booleano).~~ **Corregido (2026-07-07):** `sendResponseOr404` ahora devuelve `success: false` como booleano en el caso 404, consistente con el resto de la API.
+3. ~~**Errores de tipo de archivo/tamaño en Multer no tenían `statusCode` asignado**, por lo que caían al branch de `500` del manejador global en vez de `400`.~~ **Corregido (2026-08-01):** `multerConfig` ahora adjunta `statusCode: 400` en el filtro de tipo de archivo, y el manejador global tiene un branch explícito para `MulterError` (`LIMIT_FILE_SIZE` → `"File is too large. Maximum size allowed is 5 MB."`, otros códigos Multer → el mensaje Multer). Ambos endpoints ahora devuelven `400` para tipo de archivo inválido o archivo demasiado grande.
 4. **`GET /api/admin/stats` es global** (todos los usuarios de la plataforma), mientras que `GET /api/dashboard` es por usuario — no confundir ambos como la misma fuente de verdad.
-5. ~~Existe un middleware `identifyUserDemo` (`demoTrialMiddleware.js`) para limitar cuentas demo a 5 días, pero no está enlazado a ninguna ruta activa.~~ **Eliminado (2026-07-04, #138):** el middleware de límite de cuentas demo (`demoTrialMiddleware.js`) fue borrado del repositorio junto con `matchRepository.js` por tratarse de código muerto. Ya no existe ninguna referencia a cuentas demo en el backend (la variable de entorno `DEMO_USER` quedó también sin uso).
-6. **`GET /api/dashboard` hardcodea en `vacancyStatusBreakdown` un status `"CONTACTING"` que no existe en `VacancyStatus`** (`ACTIVE | PAUSED | CLOSED`), y omite `PAUSED` por completo — ver detalle completo en la sección 7. No tratar este array como un desglose exhaustivo del status real de cada vacante hoy en día.
-7. **Ningún endpoint de listado de esta API impone un tamaño máximo de página.** Los dos endpoints paginados (`GET /api/vacancies/:id/results`, `GET /api/admin/users`) no hacen ningún clamp sobre `limit` — un valor suficientemente grande devuelve toda la tabla en una sola respuesta. Los endpoints de listado sin paginar (`GET /api/departments`, `GET /api/positions`, `GET /api/vacancies`, `GET /api/candidates`) no tienen ningún límite de tamaño, por diseño. Ver sección 10 para el detalle completo endpoint por endpoint.
-8. ~~`Candidate.hash` era único a nivel global (`@unique`) en vez de estar scoped por usuario, lo que causaba dos bugs distintos: (a) subir el mismo CV a una segunda vacante del mismo usuario reutilizaba silenciosamente el `Candidate` existente sin nunca vincularlo a la nueva vacante — la subida reportaba `success: true` pero el candidato jamás podía evaluarse para esa segunda vacante, y (b) dos usuarios distintos subiendo un PDF byte-idéntico hacían que la request del segundo usuario devolviera transparentemente los datos confidenciales del `Candidate` del primero (fuga entre tenants).~~ **Corregido (2026-07-13):** `Candidate.hash` ahora es único por `(userId, hash)`. Los candidatos reutilizados se vinculan a vacantes adicionales vía `Application` (ver sección 8.5), y dos usuarios distintos ya pueden tener cada uno su propio registro `Candidate` independiente para el mismo CV subyacente. `GET /api/vacancies` y `GET /api/vacancies/:id` todavía listan `candidates` según `Candidate.vacancyId` únicamente (la vacante de la subida *original*) — un candidato vinculado a una segunda vacante solo vía `Application` todavía no aparece en el array `candidates` de esa vacante, aunque ya sea evaluable ahí. Queda pendiente como follow-up, no corregido todavía.
+5. ~~Existe un middleware `identifyUserDemo` (`demoTrialMiddleware.js`) para limitar cuentas demo a 5 días, pero no está enlazado a ninguna ruta activa.~~ **Eliminado (2026-07-04, #138):** el middleware de límite de cuentas demo fue borrado del repositorio junto con `matchRepository.js` por tratarse de código muerto.
+6. ~~**`GET /api/dashboard` hardcodeaba en `vacancyStatusBreakdown` un status `"CONTACTING"` que no existe en `VacancyStatus`**, y omitía `PAUSED` por completo.~~ **Corregido (2026-08-01):** el baseline ahora es `ACTIVE | PAUSED | CLOSED` — coincide exactamente con el schema.
+7. ~~**Ningún endpoint de listado de esta API imponía un tamaño máximo de página.**~~ **Parcialmente corregido (2026-08-01):** `GET /api/positions`, `GET /api/vacancies` y `GET /api/candidates` ahora aceptan `page`/`limit` (default 20, máximo 100). `GET /api/vacancies/:id/results` y `GET /api/admin/users` ahora clampean `limit` a 100. `GET /api/departments` sigue sin paginación — la lista es pequeña por diseño (10 departamentos creados al registrarse más los que el usuario agregue). Ver sección 10 para el detalle actualizado.
+8. ~~`Candidate.hash` era único a nivel global (`@unique`) en vez de estar scoped por usuario, lo que causaba dos bugs distintos.~~ **Corregido (2026-07-13):** `Candidate.hash` ahora es único por `(userId, hash)`. ~~`GET /api/vacancies` todavía listaba `candidates` según `Candidate.vacancyId` únicamente — un candidato vinculado solo vía `Application` no aparecía en el array `candidates` de esa vacante.~~ **También corregido (2026-08-01):** `GET /api/vacancies` ahora obtiene `candidates` vía join de `Application`, por lo que un candidato reutilizado aparece correctamente en cada vacante a la que aplicó.
 
 ---
 
@@ -546,18 +566,18 @@ Respuesta consolidada a "¿cuánto devuelve realmente cada `GET`?" — ver la se
 | Endpoint | Devuelve | ¿Paginado? | Tamaño de página default | Máximo impuesto |
 | --- | --- | --- | --- | --- |
 | `GET /api/departments` | TODOS los departamentos del usuario | No | — | — |
-| `GET /api/positions` | TODAS las posiciones del usuario | No | — | — |
+| `GET /api/positions` | Posiciones del usuario | Sí (`page`/`limit`) | `page=1`, `limit=20` | **100** |
 | `GET /api/positions/:id` | Un solo registro | N/A | — | — |
-| `GET /api/vacancies` | TODAS las vacantes del usuario, cada una con su array **completo** de `candidates` y `position: { id, role }` incrustados | No | — | — |
+| `GET /api/vacancies` | Vacantes del usuario, cada una con `candidates` (vía join de Application) y `position: { id, role }` | Sí (`page`/`limit`) | `page=1`, `limit=20` | **100** |
 | `GET /api/vacancies/:id` | Un solo registro | N/A | — | — |
-| `GET /api/vacancies/:id/results` | `MatchResult[]` de una vacante | Sí (`page`/`limit`) | `page=1`, `limit=20` | **Ninguno** — `limit` no tiene clamp |
-| `GET /api/candidates` | TODOS los candidatos del usuario (incl. `rawApiPayload`) | No | — | — |
+| `GET /api/vacancies/:id/results` | `MatchResult[]` de una vacante | Sí (`page`/`limit`) | `page=1`, `limit=20` | **100** |
+| `GET /api/candidates` | Candidatos del usuario (incl. `rawApiPayload`) | Sí (`page`/`limit`) | `page=1`, `limit=20` | **100** |
 | `GET /api/candidates/:id` | Un solo registro | N/A | — | — |
 | `GET /api/admin/stats` | Un único objeto agregado, de toda la plataforma | N/A (no es lista) | — | — |
-| `GET /api/admin/users` | `User[]`, de toda la plataforma | Sí (`page`/`limit`) | `page=1`, `limit=50` | **Ninguno** — `limit` no tiene clamp |
-| `GET /api/dashboard` | `total` (objeto único) + `vacancyStatusBreakdown` (3 filas fijas) + `monthlyActivity` (1 fila por mes calendario con actividad, crece con la antigüedad de la cuenta) | No | — | — |
+| `GET /api/admin/users` | `User[]`, de toda la plataforma | Sí (`page`/`limit`) | `page=1`, `limit=50` | **100** |
+| `GET /api/dashboard` | `total` (objeto único) + `vacancyStatusBreakdown` (3 filas fijas: ACTIVE/PAUSED/CLOSED) + `monthlyActivity` (1 fila por mes calendario con actividad) | No | — | — |
 
-**Conclusión práctica para el frontend:** si una cuenta acumula muchas posiciones, vacantes o candidatos, las cuatro filas marcadas "No" arriba van a devolver el dataset completo en una sola respuesta, sin forma de pedir un recorte — hay que planificar el renderizado del lado del cliente (virtualización, secciones lazy) en función de esto, en vez de asumir que el backend siempre va a devolver una página chica. Para los dos endpoints paginados, tampoco conviene hardcodear el tamaño de página default como un techo fijo, ya que un caller (o un futuro bug) puede pedir un `limit` sin límite.
+**Conclusión práctica para el frontend:** `GET /api/departments` es el único endpoint de listado sin paginación — la lista de departamentos es pequeña y acotada por diseño. Todos los demás endpoints de listado aceptan `page`/`limit` con un tope fijo de 100. El array `monthlyActivity` de `GET /api/dashboard` crece con la antigüedad de la cuenta y no tiene filtro `from`/`to`. Usar siempre `meta.total`/`meta.totalPages` para manejar la paginación en la UI, en vez de asumir un tamaño de página fijo.
 
 ---
 
