@@ -312,7 +312,7 @@ Dos superficies de analítica distintas — **no confundirlas**:
 
 ## 16. Configuración y variables de entorno
 
-Actualmente **no hay un `.env.example` versionado**. Crea un `.env` en la raíz del proyecto:
+Hay un `.env.example` versionado (solo nombres, sin valores) en la raíz del proyecto. Cópialo a `.env` y complétalo:
 
 ```env
 # Init de MySQL (usado por docker-compose para el contenedor de BD local)

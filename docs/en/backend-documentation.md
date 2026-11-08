@@ -312,7 +312,7 @@ Two distinct analytics surfaces — **do not confuse them**:
 
 ## 16. Configuration & environment variables
 
-There is currently **no committed `.env.example`**. Create a `.env` in the project root:
+A versioned `.env.example` (names only, no values) lives in the project root. Copy it to `.env` and fill in:
 
 ```env
 # MySQL init (used by docker-compose for the local DB container)

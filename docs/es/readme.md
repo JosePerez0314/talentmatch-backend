@@ -111,7 +111,7 @@ Para el detalle completo de cada endpoint ver **[`api-documentation.md`](./api-d
 
 ## Variables de entorno
 
-No existe actualmente un `.env.example` en el repo — crea un `.env` en la raíz con estas variables:
+Copia el `.env.example` versionado a `.env` en la raíz (`cp .env.example .env`) y completa estas variables:
 
 ```env
 # 1. Inicialización de MySQL vía Docker (usado por docker-compose)
@@ -258,7 +258,7 @@ Las reglas de arquitectura, migración JS→TS, y manejo de errores/transaccione
 - [x] Hardening de validación y manejo de errores (ver `changelog-frontend.md`)
 - [x] Suite de tests automatizados (unitarios + integración)
 - [ ] Cobertura de tests en el pipeline de CI (hoy el gate es solo `type-check`)
-- [ ] `.env.example` versionado
+- [x] `.env.example` versionado
 
 ## Licencia
 
